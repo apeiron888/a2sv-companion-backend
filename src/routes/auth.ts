@@ -18,6 +18,10 @@ const registerSchema = z.object({
   github_repo: z.string().min(3)
 });
 
+const loginSchema = z.object({
+  email: z.string().email()
+});
+
 authRouter.post("/register", async (req, res, next) => {
   try {
     const payload = registerSchema.parse(req.body);
@@ -60,6 +64,27 @@ authRouter.post("/register", async (req, res, next) => {
       temp_token: tempToken,
       message: "Proceed to GitHub OAuth"
     });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+authRouter.post("/login", async (req, res, next) => {
+  try {
+    const payload = loginSchema.parse(req.body);
+    const user = await UserModel.findOne({ email: payload.email });
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+    if (user.status !== "active") {
+      return res.status(403).json({ success: false, message: "GitHub not connected" });
+    }
+
+    const jwt = signAuthToken(user.id);
+    const refreshToken = await issueRefreshToken(user.id);
+
+    return res.json({ success: true, token: jwt, refresh_token: refreshToken });
   } catch (error) {
     return next(error);
   }
