@@ -25,7 +25,7 @@ async function handleSubmission(req: AuthRequest, res: Response, platform: "leet
   if (!user || user.status !== "active") {
     return res.status(403).json({ success: false, message: "User not active" });
   }
-  if (!user.githubAccessToken || !user.githubRepo) {
+  if ((!user.githubAccessToken && !user.githubAccessTokenEnc) || !user.githubRepo) {
     return res.status(400).json({ success: false, message: "GitHub not connected" });
   }
 
