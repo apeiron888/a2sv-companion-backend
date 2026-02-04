@@ -3,6 +3,19 @@ import { env } from "../config/env.js";
 
 let sheetsClient: ReturnType<typeof google.sheets> | null = null;
 
+function parseServiceAccountKey(raw: string) {
+  try {
+    const decoded = Buffer.from(raw, "base64").toString("utf-8");
+    return JSON.parse(decoded);
+  } catch {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      throw new Error("Invalid GOOGLE_SERVICE_ACCOUNT_KEY_BASE64. Provide base64-encoded JSON key.");
+    }
+  }
+}
+
 function getSheetsClient() {
   if (sheetsClient) {
     return sheetsClient;
@@ -11,9 +24,7 @@ function getSheetsClient() {
     throw new Error("GOOGLE_SERVICE_ACCOUNT_KEY_BASE64 is not set");
   }
 
-  const credentials = JSON.parse(
-    Buffer.from(env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64, "base64").toString("utf-8")
-  );
+  const credentials = parseServiceAccountKey(env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64);
 
   const auth = new google.auth.GoogleAuth({
     credentials,
