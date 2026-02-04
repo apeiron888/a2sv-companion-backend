@@ -1,9 +1,10 @@
-import type { NextFunction, Request, Response } from "express";
+import type { ErrorRequestHandler } from "express";
 
-export function notFound(req: Request, res: Response) {
-  res.status(404).json({ error: "Not Found", path: req.path });
-}
-
-export function errorHandler(err: Error, _req: Request, res: Response, _next: NextFunction) {
-  res.status(500).json({ error: "Internal Server Error", message: err.message });
-}
+export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
+  const status = err.status || 500;
+  const message = err.message || "Internal server error";
+  res.status(status).json({
+    success: false,
+    message
+  });
+};

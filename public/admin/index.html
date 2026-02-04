@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>A2SV Companion Admin</title>
+    <link rel="stylesheet" href="/admin/styles.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header>
+        <h1>A2SV Companion Admin</h1>
+        <p>Manage groups, questions, and mappings.</p>
+      </header>
+
+      <section class="card">
+        <h2>Admin Access</h2>
+        <div class="grid">
+          <label>
+            API Base URL
+            <input id="apiBase" type="text" placeholder="http://localhost:4000" />
+          </label>
+          <label>
+            Admin API Key
+            <input id="adminKey" type="password" placeholder="x-admin-key" />
+          </label>
+        </div>
+        <button id="saveSettings">Save Settings</button>
+        <p id="settingsStatus" class="status"></p>
+      </section>
+
+      <section class="card">
+        <h2>Create Group Sheet</h2>
+        <div class="grid">
+          <label>Group Name<input id="groupName" type="text" placeholder="G7A" /></label>
+          <label>Sheet ID<input id="sheetId" type="text" placeholder="Google Sheet ID" /></label>
+          <label>Name Column<input id="nameColumn" type="text" placeholder="B" /></label>
+          <label>Name Start Row<input id="nameStart" type="number" placeholder="5" /></label>
+          <label>Name End Row<input id="nameEnd" type="number" placeholder="50" /></label>
+        </div>
+        <button id="createGroup">Create Group</button>
+        <p id="groupStatus" class="status"></p>
+      </section>
+
+      <section class="card">
+        <h2>Create Question</h2>
+        <div class="grid">
+          <label>Platform<select id="questionPlatform"><option value="leetcode">LeetCode</option><option value="codeforces">Codeforces</option></select></label>
+          <label>Question Key<input id="questionKey" type="text" placeholder="two-sum" /></label>
+          <label>Title<input id="questionTitle" type="text" placeholder="Two Sum" /></label>
+          <label>URL<input id="questionUrl" type="text" placeholder="https://..." /></label>
+        </div>
+        <button id="createQuestion">Create Question</button>
+        <p id="questionStatus" class="status"></p>
+      </section>
+
+      <section class="card">
+        <h2>Create Mapping</h2>
+        <div class="grid">
+          <label>Question ID<input id="mappingQuestionId" type="text" placeholder="Question ObjectId" /></label>
+          <label>Group ID<input id="mappingGroupId" type="text" placeholder="Group ObjectId" /></label>
+          <label>Trial Column<input id="mappingTrial" type="text" placeholder="C" /></label>
+          <label>Time Column<input id="mappingTime" type="text" placeholder="D" /></label>
+        </div>
+        <button id="createMapping">Create Mapping</button>
+        <p id="mappingStatus" class="status"></p>
+      </section>
+
+      <section class="card">
+        <h2>Delete Mapping</h2>
+        <div class="grid">
+          <label>Mapping ID<input id="deleteMappingId" type="text" placeholder="Mapping ObjectId" /></label>
+        </div>
+        <button id="deleteMapping">Delete Mapping</button>
+        <p id="deleteMappingStatus" class="status"></p>
+      </section>
+
+      <section class="card">
+        <h2>Data Overview</h2>
+        <div class="grid">
+          <button id="loadGroups">Load Groups</button>
+          <button id="loadQuestions">Load Questions</button>
+          <button id="loadMappings">Load Mappings</button>
+        </div>
+        <div class="table" id="dataTable"></div>
+      </section>
+    </div>
+
+    <script src="/admin/admin.js"></script>
+  </body>
+</html>

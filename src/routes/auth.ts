@@ -1,160 +1,158 @@
 import { Router } from "express";
+import { z } from "zod";
+import { GroupSheetModel } from "../models/GroupSheet.js";
+import { UserModel } from "../models/User.js";
 import { env } from "../config/env.js";
-import { OAuthTokenModel } from "../models/oauthToken.js";
-import { UserModel } from "../models/user.js";
+import { findUserRow } from "../services/googleSheets.js";
+import { exchangeGitHubCode, fetchGitHubUser, verifyRepoAccess } from "../services/github.js";
+import { signAuthToken, signTempToken, verifyTempToken } from "../services/jwt.js";
+import { encryptSecret } from "../services/crypto.js";
+import { issueRefreshToken, revokeRefreshToken, rotateRefreshToken } from "../services/refreshTokens.js";
 
-const router = Router();
+export const authRouter = Router();
 
-router.get("/auth/github/start", (_req, res) => {
-  if (!env.GITHUB_CLIENT_ID || !env.GITHUB_CALLBACK_URL) {
-    return res.status(500).json({ error: "GitHub OAuth not configured" });
-  }
-
-  const redirectUrl = new URL("https://github.com/login/oauth/authorize");
-  redirectUrl.searchParams.set("client_id", env.GITHUB_CLIENT_ID);
-  redirectUrl.searchParams.set("redirect_uri", env.GITHUB_CALLBACK_URL);
-  redirectUrl.searchParams.set("scope", "repo read:user user:email");
-
-  return res.redirect(redirectUrl.toString());
+const registerSchema = z.object({
+  full_name: z.string().min(2),
+  email: z.string().email(),
+  group_name: z.string().min(2),
+  github_repo: z.string().min(3)
 });
 
-router.get("/auth/github/callback", (_req, res) => {
-  const code = _req.query.code as string | undefined;
-  if (!code) {
-    return res.status(400).json({ error: "Missing code" });
+authRouter.post("/register", async (req, res, next) => {
+  try {
+    const payload = registerSchema.parse(req.body);
+
+    const existingUser = await UserModel.findOne({ email: payload.email });
+    if (existingUser) {
+      return res.status(409).json({ success: false, message: "User already exists" });
+    }
+
+    const groupSheet = await GroupSheetModel.findOne({ groupName: payload.group_name, active: true });
+    if (!groupSheet) {
+      return res.status(400).json({ success: false, message: "Invalid group" });
+    }
+
+    const row = await findUserRow({
+      sheetId: groupSheet.sheetId,
+      nameColumn: groupSheet.nameColumn,
+      startRow: groupSheet.nameStartRow,
+      endRow: groupSheet.nameEndRow,
+      fullName: payload.full_name
+    });
+
+    if (!row) {
+      return res.status(400).json({ success: false, message: "User not found in group sheet" });
+    }
+
+    const user = await UserModel.create({
+      fullName: payload.full_name,
+      email: payload.email,
+      groupName: payload.group_name,
+      sheetRow: row,
+      githubRepo: payload.github_repo,
+      status: "pending_github"
+    });
+
+    const tempToken = signTempToken(user.id);
+
+    return res.json({
+      success: true,
+      temp_token: tempToken,
+      message: "Proceed to GitHub OAuth"
+    });
+  } catch (error) {
+    return next(error);
   }
-  if (!env.GITHUB_CLIENT_ID || !env.GITHUB_CLIENT_SECRET) {
-    return res.status(500).json({ error: "GitHub OAuth not configured" });
+});
+
+authRouter.get("/github/oauth", (req, res) => {
+  const state = req.query.state?.toString();
+  if (!state) {
+    return res.status(400).json({ success: false, message: "Missing state" });
   }
 
-  const tokenParams = new URLSearchParams({
+  const params = new URLSearchParams({
     client_id: env.GITHUB_CLIENT_ID,
-    client_secret: env.GITHUB_CLIENT_SECRET,
-    code
+    redirect_uri: env.GITHUB_CALLBACK_URL,
+    scope: "repo",
+    state
   });
 
-  fetch("https://github.com/login/oauth/access_token", {
-    method: "POST",
-    headers: { Accept: "application/json" },
-    body: tokenParams
-  })
-    .then(async (resp) => {
-      if (!resp.ok) throw new Error("Failed to exchange code");
-      const tokenJson = (await resp.json()) as { access_token?: string; scope?: string };
-      if (!tokenJson.access_token) throw new Error("Missing access token");
-
-      const userResp = await fetch("https://api.github.com/user", {
-        headers: { Authorization: `Bearer ${tokenJson.access_token}` }
-      });
-      if (!userResp.ok) throw new Error("Failed to fetch GitHub user");
-      const userJson = (await userResp.json()) as { id: number; login: string };
-
-      const user = await UserModel.findOneAndUpdate(
-        { githubUserId: String(userJson.id) },
-        { githubUserId: String(userJson.id), githubUsername: userJson.login },
-        { new: true, upsert: true }
-      );
-
-      await OAuthTokenModel.findOneAndUpdate(
-        { userId: String(user._id), provider: "github" },
-        { userId: String(user._id), provider: "github", accessToken: tokenJson.access_token, scope: tokenJson.scope },
-        { upsert: true }
-      );
-
-      return res.json({ userId: user._id, githubUsername: user.githubUsername });
-    })
-    .catch((err) => res.status(500).json({ error: err.message }));
+  return res.redirect(`https://github.com/login/oauth/authorize?${params.toString()}`);
 });
 
-router.get("/auth/google/start", (_req, res) => {
-  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CALLBACK_URL) {
-    return res.status(500).json({ error: "Google OAuth not configured" });
+authRouter.get("/github/callback", async (req, res, next) => {
+  try {
+    const code = req.query.code?.toString();
+    const state = req.query.state?.toString();
+
+    if (!code || !state) {
+      return res.status(400).json({ success: false, message: "Missing code or state" });
+    }
+
+    const userId = verifyTempToken(state);
+    const user = await UserModel.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    const accessToken = await exchangeGitHubCode(code);
+    const githubUser = await fetchGitHubUser(accessToken);
+
+    const hasAccess = await verifyRepoAccess(accessToken, user.githubRepo || "");
+    if (!hasAccess) {
+      return res.status(403).json({ success: false, message: "GitHub repo access denied" });
+    }
+
+    user.githubAccessTokenEnc = encryptSecret(accessToken);
+    user.githubUsername = githubUser.login;
+    user.status = "active";
+    await user.save();
+
+    const jwt = signAuthToken(user.id);
+    const refreshToken = await issueRefreshToken(user.id);
+
+    if (env.AUTH_SUCCESS_REDIRECT) {
+      const url = new URL(env.AUTH_SUCCESS_REDIRECT);
+      url.searchParams.set("token", jwt);
+      url.searchParams.set("refresh", refreshToken);
+      return res.redirect(url.toString());
+    }
+
+    return res.json({ success: true, token: jwt, refresh_token: refreshToken });
+  } catch (error) {
+    if (env.AUTH_ERROR_REDIRECT) {
+      const url = new URL(env.AUTH_ERROR_REDIRECT);
+      url.searchParams.set("reason", "oauth_failed");
+      return res.redirect(url.toString());
+    }
+    return next(error);
   }
-
-  const redirectUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-  redirectUrl.searchParams.set("client_id", env.GOOGLE_CLIENT_ID);
-  redirectUrl.searchParams.set("redirect_uri", env.GOOGLE_CALLBACK_URL);
-  redirectUrl.searchParams.set("response_type", "code");
-  redirectUrl.searchParams.set("access_type", "offline");
-  redirectUrl.searchParams.set("scope", "https://www.googleapis.com/auth/spreadsheets");
-
-  return res.redirect(redirectUrl.toString());
 });
 
-router.get("/auth/google/callback", (_req, res) => {
-  const code = _req.query.code as string | undefined;
-  if (!code) {
-    return res.status(400).json({ error: "Missing code" });
+authRouter.post("/refresh", async (req, res, next) => {
+  try {
+    const refreshToken = req.body?.refresh_token as string;
+    if (!refreshToken) {
+      return res.status(400).json({ success: false, message: "Refresh token required" });
+    }
+    const { userId, refreshToken: newRefreshToken } = await rotateRefreshToken(refreshToken);
+    const jwt = signAuthToken(userId);
+    return res.json({ success: true, token: jwt, refresh_token: newRefreshToken });
+  } catch (error) {
+    return next(error);
   }
-  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.GOOGLE_CALLBACK_URL) {
-    return res.status(500).json({ error: "Google OAuth not configured" });
-  }
-
-  const tokenParams = new URLSearchParams({
-    code,
-    client_id: env.GOOGLE_CLIENT_ID,
-    client_secret: env.GOOGLE_CLIENT_SECRET,
-    redirect_uri: env.GOOGLE_CALLBACK_URL,
-    grant_type: "authorization_code"
-  });
-
-  fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: tokenParams
-  })
-    .then(async (resp) => {
-      if (!resp.ok) throw new Error("Failed to exchange code");
-      const tokenJson = (await resp.json()) as {
-        access_token?: string;
-        refresh_token?: string;
-        scope?: string;
-        expires_in?: number;
-      };
-      if (!tokenJson.access_token) throw new Error("Missing access token");
-
-      const userResp = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
-        headers: { Authorization: `Bearer ${tokenJson.access_token}` }
-      });
-      if (!userResp.ok) throw new Error("Failed to fetch Google user");
-      const userJson = (await userResp.json()) as { id: string; name?: string; email?: string };
-
-      const user = await UserModel.findOneAndUpdate(
-        { googleUserId: userJson.id },
-        { googleUserId: userJson.id, displayName: userJson.name || userJson.email },
-        { new: true, upsert: true }
-      );
-
-      const expiresAt = tokenJson.expires_in
-        ? new Date(Date.now() + tokenJson.expires_in * 1000)
-        : undefined;
-
-      await OAuthTokenModel.findOneAndUpdate(
-        { userId: String(user._id), provider: "google" },
-        {
-          userId: String(user._id),
-          provider: "google",
-          accessToken: tokenJson.access_token,
-          refreshToken: tokenJson.refresh_token,
-          scope: tokenJson.scope,
-          expiresAt
-        },
-        { upsert: true }
-      );
-
-      return res.json({ userId: user._id, displayName: user.displayName });
-    })
-    .catch((err) => res.status(500).json({ error: err.message }));
 });
 
-router.post("/auth/logout", (_req, res) => {
-  const userId = _req.header("x-user-id") as string | undefined;
-  if (!userId) {
-    return res.status(400).json({ error: "Missing x-user-id" });
+authRouter.post("/logout", async (req, res, next) => {
+  try {
+    const refreshToken = req.body?.refresh_token as string;
+    if (refreshToken) {
+      await revokeRefreshToken(refreshToken);
+    }
+    return res.json({ success: true });
+  } catch (error) {
+    return next(error);
   }
-  OAuthTokenModel.deleteMany({ userId })
-    .then(() => res.status(204).send())
-    .catch((err) => res.status(500).json({ error: err.message }));
 });
-
-export default router;

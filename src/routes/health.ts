@@ -1,9 +1,10 @@
 import { Router } from "express";
 
-const router = Router();
+export const healthRouter = Router();
 
-router.get("/health", (_req, res) => {
-  res.json({ status: "ok" });
+healthRouter.get("/", (_req, res) => {
+  res.json({
+    status: "ok",
+    service: "a2sv-companion-backend"
+  });
 });
-
-export default router;
