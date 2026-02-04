@@ -38,8 +38,9 @@ export function createApp() {
   }
 
   app.use(helmet());
+  const corsOrigins = env.CORS_ORIGINS;
   app.use(cors({
-    origin: env.CORS_ORIGINS,
+    origin: corsOrigins.length ? corsOrigins : true,
     credentials: true
   }));
   app.use(express.json({ limit: "2mb" }));
