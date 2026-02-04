@@ -1,8 +1,9 @@
 import * as Sentry from "@sentry/node";
+import type { RequestHandler, ErrorRequestHandler } from "express";
 import { env } from "./env.js";
 
-export let sentryRequestHandler: ReturnType<typeof Sentry.Handlers.requestHandler> | null = null;
-export let sentryErrorHandler: ReturnType<typeof Sentry.Handlers.errorHandler> | null = null;
+export let sentryRequestHandler: RequestHandler | null = null;
+export let sentryErrorHandler: ErrorRequestHandler | null = null;
 
 export function initMonitoring() {
   if (!env.SENTRY_DSN) {
@@ -15,6 +16,9 @@ export function initMonitoring() {
     tracesSampleRate: 0.1
   });
 
-  sentryRequestHandler = Sentry.Handlers.requestHandler();
-  sentryErrorHandler = Sentry.Handlers.errorHandler();
+  const handlers = (Sentry as unknown as { Handlers?: { requestHandler?: () => RequestHandler; errorHandler?: () => ErrorRequestHandler } }).Handlers;
+  if (handlers?.requestHandler && handlers?.errorHandler) {
+    sentryRequestHandler = handlers.requestHandler();
+    sentryErrorHandler = handlers.errorHandler();
+  }
 }
