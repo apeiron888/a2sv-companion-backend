@@ -1,6 +1,7 @@
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
+import { createRequire } from "module";
 import cors from "cors";
 import helmet from "helmet";
 import pinoHttp from "pino-http";
@@ -18,6 +19,20 @@ export function createApp() {
   const app = express();
   monitoring.initMonitoring();
 
+  let transport: { target: string; options?: { colorize?: boolean } } | undefined;
+  if (env.NODE_ENV !== "production") {
+    try {
+      const require = createRequire(import.meta.url);
+      require.resolve("pino-pretty");
+      transport = {
+        target: "pino-pretty",
+        options: { colorize: true }
+      };
+    } catch {
+      transport = undefined;
+    }
+  }
+
   if (monitoring.sentryRequestHandler) {
     app.use(monitoring.sentryRequestHandler);
   }
@@ -31,10 +46,7 @@ export function createApp() {
   app.use(
     pinoHttp({
       level: env.NODE_ENV === "production" ? "info" : "debug",
-      transport: env.NODE_ENV === "production" ? undefined : {
-        target: "pino-pretty",
-        options: { colorize: true }
-      }
+      transport
     })
   );
 
