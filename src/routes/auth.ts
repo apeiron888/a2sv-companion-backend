@@ -1,13 +1,15 @@
 import { Router } from "express";
+import crypto from "crypto";
 import { z } from "zod";
 import { GroupSheetModel } from "../models/GroupSheet.js";
 import { UserModel } from "../models/User.js";
+import { OAuthExchangeModel } from "../models/OAuthExchange.js";
 import { env } from "../config/env.js";
 import { findUserRow } from "../services/googleSheets.js";
 import { exchangeGitHubCode, fetchGitHubUser, verifyRepoAccess } from "../services/github.js";
 import { signAuthToken, signTempToken, verifyTempToken } from "../services/jwt.js";
 import { requireExtensionKey } from "../middleware/extension.js";
-import { encryptSecret } from "../services/crypto.js";
+import { decryptSecret, encryptSecret } from "../services/crypto.js";
 import { issueRefreshToken, revokeRefreshToken, rotateRefreshToken } from "../services/refreshTokens.js";
 
 export const authRouter = Router();
@@ -22,6 +24,43 @@ const registerSchema = z.object({
 const loginStartSchema = z.object({
   email: z.string().email()
 });
+
+const exchangeSchema = z.object({
+  temp_token: z.string().min(10)
+});
+
+const EXCHANGE_TTL_MINUTES = 10;
+
+function hashTempToken(token: string) {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+function exchangeExpiresAt() {
+  return new Date(Date.now() + EXCHANGE_TTL_MINUTES * 60 * 1000);
+}
+
+function renderOAuthResult(title: string, message: string) {
+  return `<!DOCTYPE html>
+  <html lang="en">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>${title}</title>
+      <style>
+        body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; padding: 32px; }
+        .card { max-width: 520px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px; }
+        h1 { font-size: 20px; margin: 0 0 12px; }
+        p { color: #4b5563; }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <h1>${title}</h1>
+        <p>${message}</p>
+      </div>
+    </body>
+  </html>`;
+}
 
 authRouter.post("/register", requireExtensionKey, async (req, res, next) => {
   try {
@@ -143,20 +182,82 @@ authRouter.get("/github/callback", async (req, res, next) => {
     const jwt = signAuthToken(user.id);
     const refreshToken = await issueRefreshToken(user.id);
 
-    if (env.AUTH_SUCCESS_REDIRECT) {
-      const url = new URL(env.AUTH_SUCCESS_REDIRECT);
-      url.searchParams.set("token", jwt);
-      url.searchParams.set("refresh", refreshToken);
-      return res.redirect(url.toString());
+    await OAuthExchangeModel.findOneAndUpdate(
+      { tempTokenHash: hashTempToken(state) },
+      {
+        tempTokenHash: hashTempToken(state),
+        tokenEnc: encryptSecret(jwt),
+        refreshTokenEnc: encryptSecret(refreshToken),
+        errorCode: undefined,
+        errorMessage: undefined,
+        usedAt: undefined,
+        expiresAt: exchangeExpiresAt()
+      },
+      { upsert: true, new: true }
+    );
+
+    return res
+      .status(200)
+      .send(renderOAuthResult("Authentication successful", "You can close this tab."));
+  } catch (error) {
+    const state = req.query.state?.toString();
+    if (state) {
+      await OAuthExchangeModel.findOneAndUpdate(
+        { tempTokenHash: hashTempToken(state) },
+        {
+          tempTokenHash: hashTempToken(state),
+          errorCode: "oauth_failed",
+          errorMessage: "OAuth failed",
+          usedAt: undefined,
+          expiresAt: exchangeExpiresAt()
+        },
+        { upsert: true, new: true }
+      );
+    }
+    return res
+      .status(200)
+      .send(renderOAuthResult("Authentication failed", "Please retry the login in the extension."));
+  }
+});
+
+authRouter.post("/exchange", requireExtensionKey, async (req, res, next) => {
+  try {
+    const payload = exchangeSchema.parse(req.body || {});
+    const tempTokenHash = hashTempToken(payload.temp_token);
+    const exchange = await OAuthExchangeModel.findOne({ tempTokenHash });
+
+    if (!exchange) {
+      try {
+        verifyTempToken(payload.temp_token);
+      } catch {
+        return res.status(400).json({ success: false, message: "Invalid or expired temp token" });
+      }
+      return res.status(202).json({ success: false, message: "Pending" });
     }
 
-    return res.json({ success: true, token: jwt, refresh_token: refreshToken });
-  } catch (error) {
-    if (env.AUTH_ERROR_REDIRECT) {
-      const url = new URL(env.AUTH_ERROR_REDIRECT);
-      url.searchParams.set("reason", "oauth_failed");
-      return res.redirect(url.toString());
+    if (exchange.usedAt) {
+      return res.status(410).json({ success: false, message: "Token already exchanged" });
     }
+
+    if (exchange.expiresAt.getTime() < Date.now()) {
+      return res.status(410).json({ success: false, message: "Exchange expired" });
+    }
+
+    if (exchange.errorCode) {
+      return res.status(400).json({ success: false, message: exchange.errorMessage || "OAuth failed" });
+    }
+
+    if (!exchange.tokenEnc || !exchange.refreshTokenEnc) {
+      return res.status(202).json({ success: false, message: "Pending" });
+    }
+
+    const token = decryptSecret(exchange.tokenEnc);
+    const refreshToken = decryptSecret(exchange.refreshTokenEnc);
+    exchange.usedAt = new Date();
+    await exchange.save();
+
+    return res.json({ success: true, token, refresh_token: refreshToken });
+  } catch (error) {
     return next(error);
   }
 });
