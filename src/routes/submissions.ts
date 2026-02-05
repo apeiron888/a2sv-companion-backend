@@ -1,12 +1,15 @@
 import { Router, type Response } from "express";
 import { z } from "zod";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
+import { requireExtensionKey } from "../middleware/extension.js";
 import { UserModel } from "../models/User.js";
 import { QuestionModel } from "../models/Question.js";
 import { SubmissionModel } from "../models/Submission.js";
 import { addSubmissionJob } from "../queue/submissionQueue.js";
 
 export const submissionsRouter = Router();
+
+submissionsRouter.use(requireExtensionKey);
 
 const submissionSchema = z.object({
   question_url: z.string().url(),

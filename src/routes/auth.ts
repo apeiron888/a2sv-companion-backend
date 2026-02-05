@@ -6,6 +6,7 @@ import { env } from "../config/env.js";
 import { findUserRow } from "../services/googleSheets.js";
 import { exchangeGitHubCode, fetchGitHubUser, verifyRepoAccess } from "../services/github.js";
 import { signAuthToken, signTempToken, verifyTempToken } from "../services/jwt.js";
+import { requireExtensionKey } from "../middleware/extension.js";
 import { encryptSecret } from "../services/crypto.js";
 import { issueRefreshToken, revokeRefreshToken, rotateRefreshToken } from "../services/refreshTokens.js";
 
@@ -22,7 +23,7 @@ const loginStartSchema = z.object({
   email: z.string().email()
 });
 
-authRouter.post("/register", async (req, res, next) => {
+authRouter.post("/register", requireExtensionKey, async (req, res, next) => {
   try {
     const payload = registerSchema.parse(req.body);
 
@@ -69,7 +70,7 @@ authRouter.post("/register", async (req, res, next) => {
   }
 });
 
-authRouter.post("/login/start", async (req, res, next) => {
+authRouter.post("/login/start", requireExtensionKey, async (req, res, next) => {
   try {
     const payload = loginStartSchema.parse(req.body);
     const user = await UserModel.findOne({ email: payload.email });
@@ -160,7 +161,7 @@ authRouter.get("/github/callback", async (req, res, next) => {
   }
 });
 
-authRouter.post("/refresh", async (req, res, next) => {
+authRouter.post("/refresh", requireExtensionKey, async (req, res, next) => {
   try {
     const refreshToken = req.body?.refresh_token as string;
     if (!refreshToken) {
@@ -174,7 +175,7 @@ authRouter.post("/refresh", async (req, res, next) => {
   }
 });
 
-authRouter.post("/logout", async (req, res, next) => {
+authRouter.post("/logout", requireExtensionKey, async (req, res, next) => {
   try {
     const refreshToken = req.body?.refresh_token as string;
     if (refreshToken) {

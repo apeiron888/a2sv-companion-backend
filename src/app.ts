@@ -10,6 +10,7 @@ import { env } from "./config/env.js";
 import * as monitoring from "./config/monitoring.js";
 import { errorHandler } from "./middleware/error.js";
 import { healthRouter } from "./routes/health.js";
+import { extensionRouter } from "./routes/extension.js";
 import { authRouter } from "./routes/auth.js";
 import { usersRouter } from "./routes/users.js";
 import { submissionsRouter } from "./routes/submissions.js";
@@ -40,7 +41,10 @@ export function createApp() {
   app.use((req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
     res.header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
-    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, x-admin-key");
+    res.header(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization, x-admin-key, x-extension-key"
+    );
     if (req.method === "OPTIONS") {
       return res.sendStatus(204);
     }
@@ -52,7 +56,7 @@ export function createApp() {
   const corsOptions = {
     origin: corsOrigins.length ? corsOrigins : "*",
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "x-admin-key"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-admin-key", "x-extension-key"],
     credentials: false
   };
 
@@ -80,6 +84,7 @@ export function createApp() {
   app.use("/admin", express.static(adminPath));
 
   app.use("/health", healthRouter);
+  app.use("/api/extension", extensionRouter);
   app.use("/api/auth", authRouter);
   app.use("/api/users", usersRouter);
   app.use("/api/submissions", submissionsRouter);
