@@ -18,7 +18,7 @@ const registerSchema = z.object({
   github_repo: z.string().min(3)
 });
 
-const loginSchema = z.object({
+const loginStartSchema = z.object({
   email: z.string().email()
 });
 
@@ -57,7 +57,7 @@ authRouter.post("/register", async (req, res, next) => {
       status: "pending_github"
     });
 
-    const tempToken = signTempToken(user.id);
+    const tempToken = signTempToken(user.id, "github_oauth");
 
     return res.json({
       success: true,
@@ -69,9 +69,9 @@ authRouter.post("/register", async (req, res, next) => {
   }
 });
 
-authRouter.post("/login", async (req, res, next) => {
+authRouter.post("/login/start", async (req, res, next) => {
   try {
-    const payload = loginSchema.parse(req.body);
+    const payload = loginStartSchema.parse(req.body);
     const user = await UserModel.findOne({ email: payload.email });
 
     if (!user) {
@@ -81,10 +81,8 @@ authRouter.post("/login", async (req, res, next) => {
       return res.status(403).json({ success: false, message: "GitHub not connected" });
     }
 
-    const jwt = signAuthToken(user.id);
-    const refreshToken = await issueRefreshToken(user.id);
-
-    return res.json({ success: true, token: jwt, refresh_token: refreshToken });
+    const tempToken = signTempToken(user.id, "login");
+    return res.json({ success: true, temp_token: tempToken });
   } catch (error) {
     return next(error);
   }
@@ -115,7 +113,7 @@ authRouter.get("/github/callback", async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Missing code or state" });
     }
 
-    const userId = verifyTempToken(state);
+    const { sub: userId, purpose } = verifyTempToken(state);
     const user = await UserModel.findById(userId);
 
     if (!user) {
@@ -130,10 +128,16 @@ authRouter.get("/github/callback", async (req, res, next) => {
       return res.status(403).json({ success: false, message: "GitHub repo access denied" });
     }
 
-    user.githubAccessTokenEnc = encryptSecret(accessToken);
-    user.githubUsername = githubUser.login;
-    user.status = "active";
-    await user.save();
+    if (purpose === "login") {
+      if (!user.githubUsername || user.githubUsername !== githubUser.login) {
+        return res.status(403).json({ success: false, message: "GitHub user mismatch" });
+      }
+    } else {
+      user.githubAccessTokenEnc = encryptSecret(accessToken);
+      user.githubUsername = githubUser.login;
+      user.status = "active";
+      await user.save();
+    }
 
     const jwt = signAuthToken(user.id);
     const refreshToken = await issueRefreshToken(user.id);
