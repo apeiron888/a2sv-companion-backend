@@ -39,10 +39,15 @@ export function createApp() {
 
   app.use(helmet());
   const corsOrigins = env.CORS_ORIGINS;
-  app.use(cors({
-    origin: corsOrigins.length ? corsOrigins : true,
-    credentials: true
-  }));
+  const corsOptions = {
+    origin: corsOrigins.length ? corsOrigins : "*",
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-admin-key"],
+    credentials: false
+  };
+
+  app.use(cors(corsOptions));
+  app.options("*", cors(corsOptions));
   app.use(express.json({ limit: "2mb" }));
   app.use(
     pinoHttp({
