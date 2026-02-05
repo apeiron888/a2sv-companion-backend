@@ -6,7 +6,9 @@ const groupStatus = document.getElementById("groupStatus");
 const questionStatus = document.getElementById("questionStatus");
 const mappingStatus = document.getElementById("mappingStatus");
 const deleteMappingStatus = document.getElementById("deleteMappingStatus");
-const dataTable = document.getElementById("dataTable");
+const groupsTable = document.getElementById("groupsTable");
+const questionsTable = document.getElementById("questionsTable");
+const mappingsTable = document.getElementById("mappingsTable");
 
 const fields = {
   groupName: document.getElementById("groupName"),
@@ -18,12 +20,16 @@ const fields = {
   questionKey: document.getElementById("questionKey"),
   questionTitle: document.getElementById("questionTitle"),
   questionUrl: document.getElementById("questionUrl"),
-  mappingQuestionId: document.getElementById("mappingQuestionId"),
-  mappingGroupId: document.getElementById("mappingGroupId"),
+  mappingGroupName: document.getElementById("mappingGroupName"),
+  mappingQuestionKey: document.getElementById("mappingQuestionKey"),
   mappingTrial: document.getElementById("mappingTrial"),
   mappingTime: document.getElementById("mappingTime"),
   deleteMappingId: document.getElementById("deleteMappingId")
 };
+
+let cachedGroups = [];
+let cachedQuestions = [];
+let cachedMappings = [];
 
 function loadSettings() {
   const apiBase = localStorage.getItem("apiBase") || window.location.origin;
@@ -106,9 +112,19 @@ async function createQuestion() {
 
 async function createMapping() {
   mappingStatus.textContent = "";
+  const groupName = fields.mappingGroupName.value;
+  const questionKey = fields.mappingQuestionKey.value;
+
+  const group = cachedGroups.find((item) => item.groupName === groupName);
+  const question = cachedQuestions.find((item) => item.questionKey === questionKey);
+  if (!group || !question) {
+    mappingStatus.textContent = "Select a valid group and question";
+    return;
+  }
+
   const payload = {
-    question_id: fields.mappingQuestionId.value.trim(),
-    group_id: fields.mappingGroupId.value.trim(),
+    question_id: question._id || question.id,
+    group_id: group._id || group.id,
     trial_column: fields.mappingTrial.value.trim(),
     time_column: fields.mappingTime.value.trim()
   };
@@ -118,6 +134,7 @@ async function createMapping() {
       body: JSON.stringify(payload)
     });
     mappingStatus.textContent = `Mapping created: ${data.id}`;
+    await loadMappings();
   } catch (error) {
     mappingStatus.textContent = error.message;
   }
@@ -125,7 +142,7 @@ async function createMapping() {
 
 async function deleteMapping() {
   deleteMappingStatus.textContent = "";
-  const id = fields.deleteMappingId.value.trim();
+  const id = fields.deleteMappingId.value;
   if (!id) {
     deleteMappingStatus.textContent = "Mapping ID required";
     return;
@@ -133,39 +150,194 @@ async function deleteMapping() {
   try {
     await callApi(`/api/admin/mappings/${id}`, { method: "DELETE" });
     deleteMappingStatus.textContent = "Mapping deleted";
+    await loadMappings();
   } catch (error) {
     deleteMappingStatus.textContent = error.message;
   }
 }
 
 async function loadGroups() {
-  dataTable.innerHTML = "Loading...";
+  groupsTable.innerHTML = "Loading...";
   try {
     const data = await callApi("/api/admin/groups", { method: "GET" });
-    dataTable.innerHTML = `<pre>${JSON.stringify(data.groups, null, 2)}</pre>`;
+    cachedGroups = data.groups || [];
+    renderGroupsTable();
+    populateGroupOptions();
   } catch (error) {
-    dataTable.innerHTML = `<pre>${error.message}</pre>`;
+    groupsTable.innerHTML = `<div class="muted">${error.message}</div>`;
   }
 }
 
 async function loadQuestions() {
-  dataTable.innerHTML = "Loading...";
+  questionsTable.innerHTML = "Loading...";
   try {
     const data = await callApi("/api/admin/questions", { method: "GET" });
-    dataTable.innerHTML = `<pre>${JSON.stringify(data.questions, null, 2)}</pre>`;
+    cachedQuestions = data.questions || [];
+    renderQuestionsTable();
+    populateQuestionOptions();
   } catch (error) {
-    dataTable.innerHTML = `<pre>${error.message}</pre>`;
+    questionsTable.innerHTML = `<div class="muted">${error.message}</div>`;
   }
 }
 
 async function loadMappings() {
-  dataTable.innerHTML = "Loading...";
+  mappingsTable.innerHTML = "Loading...";
   try {
     const data = await callApi("/api/admin/mappings", { method: "GET" });
-    dataTable.innerHTML = `<pre>${JSON.stringify(data.mappings, null, 2)}</pre>`;
+    cachedMappings = data.mappings || [];
+    renderMappingsTable();
+    populateMappingDeleteOptions();
   } catch (error) {
-    dataTable.innerHTML = `<pre>${error.message}</pre>`;
+    mappingsTable.innerHTML = `<div class="muted">${error.message}</div>`;
   }
+}
+
+function renderGroupsTable() {
+  if (!cachedGroups.length) {
+    groupsTable.innerHTML = '<div class="muted">No groups found.</div>';
+    return;
+  }
+  const rows = cachedGroups
+    .map(
+      (item) => `
+      <tr>
+        <td>${item.groupName}</td>
+        <td>${item.sheetId}</td>
+        <td>${item.nameColumn}${item.nameStartRow}-${item.nameEndRow}</td>
+        <td>${item.active ? "Active" : "Inactive"}</td>
+      </tr>`
+    )
+    .join("");
+
+  groupsTable.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>Group</th>
+          <th>Sheet ID</th>
+          <th>Name Range</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function renderQuestionsTable() {
+  if (!cachedQuestions.length) {
+    questionsTable.innerHTML = '<div class="muted">No questions found.</div>';
+    return;
+  }
+  const rows = cachedQuestions
+    .map(
+      (item) => `
+      <tr>
+        <td>${item.platform}</td>
+        <td>${item.questionKey}</td>
+        <td>${item.title}</td>
+        <td><a href="${item.url}" target="_blank" rel="noreferrer">Open</a></td>
+      </tr>`
+    )
+    .join("");
+
+  questionsTable.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>Platform</th>
+          <th>Key</th>
+          <th>Title</th>
+          <th>URL</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function renderMappingsTable() {
+  if (!cachedMappings.length) {
+    mappingsTable.innerHTML = '<div class="muted">No mappings found.</div>';
+    return;
+  }
+  const groupById = new Map(cachedGroups.map((item) => [item._id || item.id, item]));
+  const questionById = new Map(cachedQuestions.map((item) => [item._id || item.id, item]));
+
+  const rows = cachedMappings
+    .map((item) => {
+      const group = groupById.get(item.groupId);
+      const question = questionById.get(item.questionId);
+      return `
+      <tr>
+        <td>${group?.groupName || "—"}</td>
+        <td>${question?.questionKey || "—"}</td>
+        <td>${item.trialColumn}</td>
+        <td>${item.timeColumn}</td>
+      </tr>`;
+    })
+    .join("");
+
+  mappingsTable.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>Group</th>
+          <th>Question</th>
+          <th>Trial Column</th>
+          <th>Time Column</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function populateGroupOptions() {
+  fields.mappingGroupName.innerHTML = "";
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Select a group";
+  fields.mappingGroupName.appendChild(placeholder);
+
+  cachedGroups.forEach((item) => {
+    const option = document.createElement("option");
+    option.value = item.groupName;
+    option.textContent = item.groupName;
+    fields.mappingGroupName.appendChild(option);
+  });
+}
+
+function populateQuestionOptions() {
+  fields.mappingQuestionKey.innerHTML = "";
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Select a question";
+  fields.mappingQuestionKey.appendChild(placeholder);
+
+  cachedQuestions.forEach((item) => {
+    const option = document.createElement("option");
+    option.value = item.questionKey;
+    option.textContent = `${item.platform} • ${item.questionKey}`;
+    fields.mappingQuestionKey.appendChild(option);
+  });
+}
+
+function populateMappingDeleteOptions() {
+  fields.deleteMappingId.innerHTML = "";
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Select a mapping";
+  fields.deleteMappingId.appendChild(placeholder);
+
+  const groupById = new Map(cachedGroups.map((item) => [item._id || item.id, item]));
+  const questionById = new Map(cachedQuestions.map((item) => [item._id || item.id, item]));
+
+  cachedMappings.forEach((item) => {
+    const option = document.createElement("option");
+    const group = groupById.get(item.groupId);
+    const question = questionById.get(item.questionId);
+    option.value = item._id || item.id;
+    option.textContent = `${group?.groupName || "—"} • ${question?.questionKey || "—"}`;
+    fields.deleteMappingId.appendChild(option);
+  });
 }
 
 document.getElementById("saveSettings").addEventListener("click", saveSettings);
@@ -178,3 +350,6 @@ document.getElementById("loadQuestions").addEventListener("click", loadQuestions
 document.getElementById("loadMappings").addEventListener("click", loadMappings);
 
 loadSettings();
+loadGroups();
+loadQuestions();
+loadMappings();
