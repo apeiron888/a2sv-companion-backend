@@ -1,35 +1,102 @@
+/* ═══════════════════════════════════════════════════════════════════
+   A2SV Companion Admin — Dashboard Logic
+   ═══════════════════════════════════════════════════════════════════ */
+
+// ─── DOM References ───────────────────────────────────────────────
+
 const apiBaseInput = document.getElementById("apiBase");
 const adminKeyInput = document.getElementById("adminKey");
 const settingsStatus = document.getElementById("settingsStatus");
+const settingsPanel = document.getElementById("settingsPanel");
+const settingsToggle = document.getElementById("settingsToggle");
+const toastContainer = document.getElementById("toastContainer");
 
-const groupStatus = document.getElementById("groupStatus");
-const questionStatus = document.getElementById("questionStatus");
-const mappingStatus = document.getElementById("mappingStatus");
-const deleteMappingStatus = document.getElementById("deleteMappingStatus");
-const groupsTable = document.getElementById("groupsTable");
-const questionsTable = document.getElementById("questionsTable");
-const mappingsTable = document.getElementById("mappingsTable");
+// Phase fields
+const phaseFields = {
+  name: document.getElementById("phaseName"),
+  tabName: document.getElementById("phaseTabName"),
+  masterSheetId: document.getElementById("phaseMasterSheetId"),
+  startColumn: document.getElementById("phaseStartColumn"),
+  order: document.getElementById("phaseOrder")
+};
 
-const fields = {
-  groupName: document.getElementById("groupName"),
+// Add-to-sheet fields
+const addFields = {
+  phaseId: document.getElementById("addPhaseId"),
+  platform: document.getElementById("addPlatform"),
+  questionKey: document.getElementById("addQuestionKey"),
+  title: document.getElementById("addTitle"),
+  url: document.getElementById("addUrl"),
+  difficulty: document.getElementById("addDifficulty"),
+  tagInput: document.getElementById("tagInput"),
+  tagChips: document.getElementById("tagChips")
+};
+
+// Simple question fields
+const questionFields = {
+  platform: document.getElementById("questionPlatform"),
+  key: document.getElementById("questionKey"),
+  title: document.getElementById("questionTitle"),
+  url: document.getElementById("questionUrl")
+};
+
+// Group fields
+const groupFields = {
+  name: document.getElementById("groupName"),
   sheetId: document.getElementById("sheetId"),
   nameColumn: document.getElementById("nameColumn"),
   nameStart: document.getElementById("nameStart"),
-  nameEnd: document.getElementById("nameEnd"),
-  questionPlatform: document.getElementById("questionPlatform"),
-  questionKey: document.getElementById("questionKey"),
-  questionTitle: document.getElementById("questionTitle"),
-  questionUrl: document.getElementById("questionUrl"),
-  mappingGroupName: document.getElementById("mappingGroupName"),
-  mappingQuestionKey: document.getElementById("mappingQuestionKey"),
-  mappingTrial: document.getElementById("mappingTrial"),
-  mappingTime: document.getElementById("mappingTime"),
+  nameEnd: document.getElementById("nameEnd")
+};
+
+// Mapping fields
+const mappingFields = {
+  groupName: document.getElementById("mappingGroupName"),
+  questionKey: document.getElementById("mappingQuestionKey"),
+  trial: document.getElementById("mappingTrial"),
+  time: document.getElementById("mappingTime"),
   deleteMappingId: document.getElementById("deleteMappingId")
 };
 
+// Status elements
+const statuses = {
+  phase: document.getElementById("phaseStatus"),
+  addToSheet: document.getElementById("addToSheetStatus"),
+  question: document.getElementById("questionStatus"),
+  group: document.getElementById("groupStatus"),
+  mapping: document.getElementById("mappingStatus"),
+  deleteMapping: document.getElementById("deleteMappingStatus")
+};
+
+// Table containers
+const tables = {
+  phases: document.getElementById("phasesTable"),
+  questions: document.getElementById("questionsTable"),
+  groups: document.getElementById("groupsTable"),
+  mappings: document.getElementById("mappingsTable")
+};
+
+// Preview elements
+const previewEls = {
+  column: document.getElementById("previewColumn"),
+  diff: document.getElementById("previewDiff"),
+  tags: document.getElementById("previewTags"),
+  platform: document.getElementById("previewPlatform"),
+  title: document.getElementById("previewTitle")
+};
+
+// Filter
+const filterPhaseId = document.getElementById("filterPhaseId");
+
+// ─── State ────────────────────────────────────────────────────────
+
+let cachedPhases = [];
 let cachedGroups = [];
 let cachedQuestions = [];
 let cachedMappings = [];
+let currentTags = [];
+
+// ─── Settings ─────────────────────────────────────────────────────
 
 function loadSettings() {
   const apiBase = localStorage.getItem("apiBase") || window.location.origin;
@@ -42,314 +109,612 @@ function saveSettings() {
   localStorage.setItem("apiBase", apiBaseInput.value.trim());
   localStorage.setItem("adminKey", adminKeyInput.value.trim());
   settingsStatus.textContent = "Settings saved";
+  showToast("Settings saved", "success");
+  setTimeout(() => { settingsStatus.textContent = ""; }, 2000);
 }
 
 function getConfig() {
-  const apiBase = apiBaseInput.value.trim();
-  const adminKey = adminKeyInput.value.trim();
-  return { apiBase, adminKey };
+  return {
+    apiBase: apiBaseInput.value.trim(),
+    adminKey: adminKeyInput.value.trim()
+  };
 }
+
+// ─── API Call Helper ──────────────────────────────────────────────
 
 async function callApi(path, options) {
   const { apiBase, adminKey } = getConfig();
-  if (!apiBase || !adminKey) {
-    throw new Error("API base and admin key required");
-  }
+  if (!apiBase) throw new Error("API base URL required");
+
   const response = await fetch(`${apiBase}${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
-      "x-admin-key": adminKey,
+      ...(adminKey ? { "x-admin-key": adminKey } : {}),
       ...(options?.headers || {})
     }
   });
 
   const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data?.message || "Request failed");
-  }
+  if (!response.ok) throw new Error(data?.message || "Request failed");
   return data;
 }
 
-async function createGroup() {
-  groupStatus.textContent = "";
-  const payload = {
-    group_name: fields.groupName.value.trim(),
-    sheet_id: fields.sheetId.value.trim(),
-    name_column: fields.nameColumn.value.trim(),
-    name_start_row: Number(fields.nameStart.value),
-    name_end_row: Number(fields.nameEnd.value)
-  };
+// ─── Toast Notifications ─────────────────────────────────────────
+
+function showToast(message, type = "success") {
+  const toast = document.createElement("div");
+  toast.className = `toast ${type}`;
+  const icon = type === "success" ? "✓" : "✕";
+  toast.innerHTML = `<span>${icon}</span> ${message}`;
+  toastContainer.appendChild(toast);
+
+  setTimeout(() => {
+    toast.classList.add("removing");
+    setTimeout(() => toast.remove(), 200);
+  }, 3000);
+}
+
+// ─── Skeleton Loader ──────────────────────────────────────────────
+
+function showSkeleton(container, rows = 3) {
+  let html = "";
+  for (let i = 0; i < rows; i++) {
+    html += `<div class="skeleton-row">
+      <div class="skeleton" style="width: ${30 + Math.random() * 40}%"></div>
+      <div class="skeleton" style="width: ${20 + Math.random() * 30}%"></div>
+      <div class="skeleton" style="width: ${15 + Math.random() * 25}%"></div>
+    </div>`;
+  }
+  container.innerHTML = html;
+}
+
+// ─── Tab Navigation ───────────────────────────────────────────────
+
+document.querySelectorAll(".tab-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+    document.querySelectorAll(".tab-content").forEach((c) => c.classList.remove("active"));
+    btn.classList.add("active");
+    const tab = document.getElementById(`tab-${btn.dataset.tab}`);
+    if (tab) tab.classList.add("active");
+  });
+});
+
+// ─── Tag Chips ────────────────────────────────────────────────────
+
+function renderTags() {
+  addFields.tagChips.innerHTML = currentTags
+    .map(
+      (tag, i) =>
+        `<span class="tag-chip">${tag}<span class="remove-tag" data-index="${i}">×</span></span>`
+    )
+    .join("");
+  updatePreview();
+}
+
+addFields.tagInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" || e.key === ",") {
+    e.preventDefault();
+    const value = addFields.tagInput.value.trim();
+    if (value && !currentTags.includes(value)) {
+      currentTags.push(value);
+      renderTags();
+    }
+    addFields.tagInput.value = "";
+  }
+  if (e.key === "Backspace" && !addFields.tagInput.value && currentTags.length) {
+    currentTags.pop();
+    renderTags();
+  }
+});
+
+addFields.tagChips.addEventListener("click", (e) => {
+  const removeBtn = e.target.closest(".remove-tag");
+  if (removeBtn) {
+    const index = parseInt(removeBtn.dataset.index, 10);
+    currentTags.splice(index, 1);
+    renderTags();
+  }
+});
+
+// ─── Live Preview ─────────────────────────────────────────────────
+
+function updatePreview() {
+  const difficulty = addFields.difficulty.value;
+  const platform = addFields.platform.value;
+  const title = addFields.title.value.trim() || "—";
+  const tags = currentTags.length ? currentTags.join(", ") : "—";
+
+  // Difficulty cell
+  previewEls.diff.textContent = difficulty;
+  previewEls.diff.className = "preview-cell diff-cell";
+  if (difficulty === "Medium") previewEls.diff.classList.add("medium");
+  if (difficulty === "Hard") previewEls.diff.classList.add("hard");
+
+  // Platform cell
+  const platNames = { leetcode: "LeetCode", codeforces: "Codeforces", hackerrank: "HackerRank" };
+  previewEls.platform.textContent = platNames[platform] || platform;
+  previewEls.platform.className = "preview-cell plat-cell";
+  if (platform === "codeforces") previewEls.platform.classList.add("codeforces");
+  if (platform === "hackerrank") previewEls.platform.classList.add("hackerrank");
+
+  previewEls.tags.textContent = tags;
+  previewEls.title.textContent = title;
+}
+
+addFields.difficulty.addEventListener("change", updatePreview);
+addFields.platform.addEventListener("change", updatePreview);
+addFields.title.addEventListener("input", updatePreview);
+
+// Fetch next column when phase changes
+addFields.phaseId.addEventListener("change", fetchNextColumn);
+
+async function fetchNextColumn() {
+  const phaseId = addFields.phaseId.value;
+  if (!phaseId) {
+    previewEls.column.textContent = "—";
+    return;
+  }
   try {
-    const data = await callApi("/api/admin/groups", {
+    const data = await callApi(`/api/admin/questions/next-column/${phaseId}`, { method: "GET" });
+    previewEls.column.textContent = `${data.nextQuestionCol} / ${data.nextTimeCol}`;
+  } catch {
+    previewEls.column.textContent = "—";
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  PHASE OPERATIONS
+// ═══════════════════════════════════════════════════════════════════
+
+async function createPhase() {
+  statuses.phase.textContent = "";
+  const payload = {
+    name: phaseFields.name.value.trim(),
+    tab_name: phaseFields.tabName.value.trim(),
+    master_sheet_id: phaseFields.masterSheetId.value.trim(),
+    start_column: phaseFields.startColumn.value.trim() || "H",
+    order: Number(phaseFields.order.value) || 0
+  };
+
+  if (!payload.name || !payload.tab_name || !payload.master_sheet_id) {
+    statuses.phase.textContent = "Name, tab name, and Master Sheet ID are required";
+    return;
+  }
+
+  try {
+    const data = await callApi("/api/admin/phases", {
       method: "POST",
       body: JSON.stringify(payload)
     });
-    groupStatus.textContent = `Group created: ${data.id}`;
+    showToast(`Phase created: ${payload.name}`, "success");
+    statuses.phase.textContent = `Phase created: ${data.id}`;
+    phaseFields.name.value = "";
+    phaseFields.tabName.value = "";
+    await loadPhases();
   } catch (error) {
-    groupStatus.textContent = error.message;
+    statuses.phase.textContent = error.message;
+    showToast(error.message, "error");
+  }
+}
+
+async function loadPhases() {
+  showSkeleton(tables.phases);
+  try {
+    const data = await callApi("/api/admin/phases", { method: "GET" });
+    cachedPhases = data.phases || [];
+    renderPhasesTable();
+    populatePhaseSelects();
+  } catch (error) {
+    tables.phases.innerHTML = `<div class="muted">${error.message}</div>`;
+  }
+}
+
+function renderPhasesTable() {
+  if (!cachedPhases.length) {
+    tables.phases.innerHTML = '<div class="muted" style="padding:16px">No phases created yet.</div>';
+    return;
+  }
+  const rows = cachedPhases
+    .map(
+      (p) => `<tr>
+        <td>${p.name}</td>
+        <td><code>${p.tabName}</code></td>
+        <td><code>${p.masterSheetId?.slice(0, 12)}...</code></td>
+        <td><code>${p.startColumn}</code></td>
+        <td><code>${p.lastQuestionColumn || "—"}</code></td>
+        <td>${p.questionCount || 0}</td>
+        <td><span class="badge ${p.active ? "badge-active" : "badge-inactive"}">${p.active ? "Active" : "Inactive"}</span></td>
+      </tr>`
+    )
+    .join("");
+
+  tables.phases.innerHTML = `<table>
+    <thead><tr>
+      <th>Name</th><th>Tab</th><th>Sheet ID</th><th>Start</th><th>Last Col</th><th>Questions</th><th>Status</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+function populatePhaseSelects() {
+  const selects = [addFields.phaseId, filterPhaseId];
+  selects.forEach((sel) => {
+    const currentValue = sel.value;
+    const isFilter = sel === filterPhaseId;
+
+    sel.innerHTML = "";
+    if (isFilter) {
+      const all = document.createElement("option");
+      all.value = "";
+      all.textContent = "All";
+      sel.appendChild(all);
+    }
+
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Select phase";
+    if (!isFilter) sel.appendChild(placeholder);
+
+    cachedPhases.forEach((p) => {
+      const opt = document.createElement("option");
+      opt.value = p._id || p.id;
+      opt.textContent = p.name;
+      sel.appendChild(opt);
+    });
+
+    if (currentValue) sel.value = currentValue;
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  QUESTION OPERATIONS
+// ═══════════════════════════════════════════════════════════════════
+
+async function addQuestionToSheet() {
+  statuses.addToSheet.textContent = "";
+  const addBtn = document.getElementById("addToSheet");
+  addBtn.disabled = true;
+  addBtn.textContent = "Adding...";
+
+  const payload = {
+    phase_id: addFields.phaseId.value,
+    platform: addFields.platform.value,
+    question_key: addFields.questionKey.value.trim(),
+    title: addFields.title.value.trim(),
+    url: addFields.url.value.trim(),
+    difficulty: addFields.difficulty.value,
+    tags: [...currentTags]
+  };
+
+  if (!payload.phase_id || !payload.question_key || !payload.title || !payload.url) {
+    statuses.addToSheet.textContent = "All fields are required";
+    addBtn.disabled = false;
+    addBtn.textContent = "Add to Master Sheet & DB";
+    return;
+  }
+
+  try {
+    const data = await callApi("/api/admin/questions/add-to-sheet", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+
+    const msg = `Added! Column: ${data.master_column}/${data.time_column} • ${data.mappings_created} mappings created`;
+    statuses.addToSheet.textContent = msg;
+    showToast(msg, "success");
+
+    // Reset form
+    addFields.questionKey.value = "";
+    addFields.title.value = "";
+    addFields.url.value = "";
+    currentTags = [];
+    renderTags();
+    updatePreview();
+
+    // Refresh data
+    await Promise.all([loadQuestions(), loadPhases(), fetchNextColumn()]);
+  } catch (error) {
+    statuses.addToSheet.textContent = error.message;
+    showToast(error.message, "error");
+  } finally {
+    addBtn.disabled = false;
+    addBtn.textContent = "Add to Master Sheet & DB";
   }
 }
 
 async function createQuestion() {
-  questionStatus.textContent = "";
+  statuses.question.textContent = "";
   const payload = {
-    platform: fields.questionPlatform.value,
-    question_key: fields.questionKey.value.trim(),
-    title: fields.questionTitle.value.trim(),
-    url: fields.questionUrl.value.trim()
+    platform: questionFields.platform.value,
+    question_key: questionFields.key.value.trim(),
+    title: questionFields.title.value.trim(),
+    url: questionFields.url.value.trim()
   };
+
   try {
     const data = await callApi("/api/admin/questions", {
       method: "POST",
       body: JSON.stringify(payload)
     });
-    questionStatus.textContent = `Question created: ${data.id}`;
+    statuses.question.textContent = `Question created: ${data.id}`;
+    showToast("Question created (DB only)", "success");
+    await loadQuestions();
   } catch (error) {
-    questionStatus.textContent = error.message;
+    statuses.question.textContent = error.message;
+    showToast(error.message, "error");
   }
 }
 
-async function createMapping() {
-  mappingStatus.textContent = "";
-  const groupName = fields.mappingGroupName.value;
-  const questionKey = fields.mappingQuestionKey.value;
+async function loadQuestions() {
+  showSkeleton(tables.questions);
+  try {
+    const phaseFilter = filterPhaseId.value;
+    const query = phaseFilter ? `?phase_id=${phaseFilter}` : "";
+    const data = await callApi(`/api/admin/questions${query}`, { method: "GET" });
+    cachedQuestions = data.questions || [];
+    renderQuestionsTable();
+    populateQuestionOptions();
+  } catch (error) {
+    tables.questions.innerHTML = `<div class="muted">${error.message}</div>`;
+  }
+}
 
-  const group = cachedGroups.find((item) => item.groupName === groupName);
-  const question = cachedQuestions.find((item) => item.questionKey === questionKey);
-  if (!group || !question) {
-    mappingStatus.textContent = "Select a valid group and question";
+function renderQuestionsTable() {
+  if (!cachedQuestions.length) {
+    tables.questions.innerHTML = '<div class="muted" style="padding:16px">No questions found.</div>';
     return;
   }
 
-  const payload = {
-    question_id: question._id || question.id,
-    group_id: group._id || group.id,
-    trial_column: fields.mappingTrial.value.trim(),
-    time_column: fields.mappingTime.value.trim()
+  const platBadge = (p) => {
+    const cls = p === "leetcode" ? "badge-lc" : p === "codeforces" ? "badge-cf" : "badge-hr";
+    const name = p === "leetcode" ? "LC" : p === "codeforces" ? "CF" : "HR";
+    return `<span class="badge ${cls}">${name}</span>`;
   };
+
+  const diffBadge = (d) => {
+    if (!d) return "—";
+    const cls = d === "Easy" ? "badge-easy" : d === "Medium" ? "badge-medium" : "badge-hard";
+    return `<span class="badge ${cls}">${d}</span>`;
+  };
+
+  const rows = cachedQuestions
+    .map((q) => {
+      const phase = q.phaseId;
+      const phaseName = typeof phase === "object" && phase?.name ? phase.name : "—";
+      return `<tr>
+        <td>${platBadge(q.platform)}</td>
+        <td>${q.title}</td>
+        <td><code>${q.questionKey}</code></td>
+        <td>${diffBadge(q.difficulty)}</td>
+        <td><code>${q.masterColumn || "—"}</code></td>
+        <td>${phaseName}</td>
+        <td><a href="${q.url}" target="_blank" rel="noreferrer">Open</a></td>
+      </tr>`;
+    })
+    .join("");
+
+  tables.questions.innerHTML = `<table>
+    <thead><tr>
+      <th>Platform</th><th>Title</th><th>Key</th><th>Diff</th><th>Col</th><th>Phase</th><th>URL</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  GROUP OPERATIONS
+// ═══════════════════════════════════════════════════════════════════
+
+async function createGroup() {
+  statuses.group.textContent = "";
+  const payload = {
+    group_name: groupFields.name.value.trim(),
+    sheet_id: groupFields.sheetId.value.trim(),
+    name_column: groupFields.nameColumn.value.trim(),
+    name_start_row: Number(groupFields.nameStart.value),
+    name_end_row: Number(groupFields.nameEnd.value)
+  };
+
   try {
-    const data = await callApi("/api/admin/mappings", {
+    const data = await callApi("/api/admin/groups", {
       method: "POST",
       body: JSON.stringify(payload)
     });
-    mappingStatus.textContent = `Mapping created: ${data.id}`;
-    await loadMappings();
+    statuses.group.textContent = `Group created: ${data.id}`;
+    showToast(`Group "${payload.group_name}" created`, "success");
+    await loadGroups();
   } catch (error) {
-    mappingStatus.textContent = error.message;
-  }
-}
-
-async function deleteMapping() {
-  deleteMappingStatus.textContent = "";
-  const id = fields.deleteMappingId.value;
-  if (!id) {
-    deleteMappingStatus.textContent = "Mapping ID required";
-    return;
-  }
-  try {
-    await callApi(`/api/admin/mappings/${id}`, { method: "DELETE" });
-    deleteMappingStatus.textContent = "Mapping deleted";
-    await loadMappings();
-  } catch (error) {
-    deleteMappingStatus.textContent = error.message;
+    statuses.group.textContent = error.message;
+    showToast(error.message, "error");
   }
 }
 
 async function loadGroups() {
-  groupsTable.innerHTML = "Loading...";
+  showSkeleton(tables.groups);
   try {
     const data = await callApi("/api/admin/groups", { method: "GET" });
     cachedGroups = data.groups || [];
     renderGroupsTable();
     populateGroupOptions();
   } catch (error) {
-    groupsTable.innerHTML = `<div class="muted">${error.message}</div>`;
+    tables.groups.innerHTML = `<div class="muted">${error.message}</div>`;
   }
 }
 
-async function loadQuestions() {
-  questionsTable.innerHTML = "Loading...";
+function renderGroupsTable() {
+  if (!cachedGroups.length) {
+    tables.groups.innerHTML = '<div class="muted" style="padding:16px">No groups found.</div>';
+    return;
+  }
+  const rows = cachedGroups
+    .map(
+      (g) => `<tr>
+        <td>${g.groupName}</td>
+        <td><code>${g.sheetId?.slice(0, 12)}...</code></td>
+        <td><code>${g.nameColumn}${g.nameStartRow}–${g.nameEndRow}</code></td>
+        <td><span class="badge ${g.active ? "badge-active" : "badge-inactive"}">${g.active ? "Active" : "Inactive"}</span></td>
+      </tr>`
+    )
+    .join("");
+
+  tables.groups.innerHTML = `<table>
+    <thead><tr><th>Group</th><th>Sheet ID</th><th>Name Range</th><th>Status</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+function populateGroupOptions() {
+  mappingFields.groupName.innerHTML = '<option value="">Select group</option>';
+  cachedGroups.forEach((g) => {
+    const opt = document.createElement("option");
+    opt.value = g.groupName;
+    opt.textContent = g.groupName;
+    mappingFields.groupName.appendChild(opt);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  MAPPING OPERATIONS
+// ═══════════════════════════════════════════════════════════════════
+
+function populateQuestionOptions() {
+  mappingFields.questionKey.innerHTML = '<option value="">Select question</option>';
+  cachedQuestions.forEach((q) => {
+    const opt = document.createElement("option");
+    opt.value = q.questionKey;
+    opt.textContent = `${q.platform} • ${q.questionKey}`;
+    mappingFields.questionKey.appendChild(opt);
+  });
+}
+
+async function createMapping() {
+  statuses.mapping.textContent = "";
+  const groupName = mappingFields.groupName.value;
+  const questionKey = mappingFields.questionKey.value;
+  const group = cachedGroups.find((g) => g.groupName === groupName);
+  const question = cachedQuestions.find((q) => q.questionKey === questionKey);
+
+  if (!group || !question) {
+    statuses.mapping.textContent = "Select a valid group and question";
+    return;
+  }
+
+  const payload = {
+    question_id: question._id || question.id,
+    group_id: group._id || group.id,
+    trial_column: mappingFields.trial.value.trim(),
+    time_column: mappingFields.time.value.trim()
+  };
+
   try {
-    const data = await callApi("/api/admin/questions", { method: "GET" });
-    cachedQuestions = data.questions || [];
-    renderQuestionsTable();
-    populateQuestionOptions();
+    const data = await callApi("/api/admin/mappings", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    statuses.mapping.textContent = `Mapping created: ${data.id}`;
+    showToast("Mapping created", "success");
+    await loadMappings();
   } catch (error) {
-    questionsTable.innerHTML = `<div class="muted">${error.message}</div>`;
+    statuses.mapping.textContent = error.message;
+    showToast(error.message, "error");
+  }
+}
+
+async function deleteMapping() {
+  statuses.deleteMapping.textContent = "";
+  const id = mappingFields.deleteMappingId.value;
+  if (!id) {
+    statuses.deleteMapping.textContent = "Select a mapping";
+    return;
+  }
+  try {
+    await callApi(`/api/admin/mappings/${id}`, { method: "DELETE" });
+    statuses.deleteMapping.textContent = "Mapping deleted";
+    showToast("Mapping deleted", "success");
+    await loadMappings();
+  } catch (error) {
+    statuses.deleteMapping.textContent = error.message;
+    showToast(error.message, "error");
   }
 }
 
 async function loadMappings() {
-  mappingsTable.innerHTML = "Loading...";
+  showSkeleton(tables.mappings);
   try {
     const data = await callApi("/api/admin/mappings", { method: "GET" });
     cachedMappings = data.mappings || [];
     renderMappingsTable();
     populateMappingDeleteOptions();
   } catch (error) {
-    mappingsTable.innerHTML = `<div class="muted">${error.message}</div>`;
+    tables.mappings.innerHTML = `<div class="muted">${error.message}</div>`;
   }
-}
-
-function renderGroupsTable() {
-  if (!cachedGroups.length) {
-    groupsTable.innerHTML = '<div class="muted">No groups found.</div>';
-    return;
-  }
-  const rows = cachedGroups
-    .map(
-      (item) => `
-      <tr>
-        <td>${item.groupName}</td>
-        <td>${item.sheetId}</td>
-        <td>${item.nameColumn}${item.nameStartRow}-${item.nameEndRow}</td>
-        <td>${item.active ? "Active" : "Inactive"}</td>
-      </tr>`
-    )
-    .join("");
-
-  groupsTable.innerHTML = `
-    <table>
-      <thead>
-        <tr>
-          <th>Group</th>
-          <th>Sheet ID</th>
-          <th>Name Range</th>
-          <th>Status</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>`;
-}
-
-function renderQuestionsTable() {
-  if (!cachedQuestions.length) {
-    questionsTable.innerHTML = '<div class="muted">No questions found.</div>';
-    return;
-  }
-  const rows = cachedQuestions
-    .map(
-      (item) => `
-      <tr>
-        <td>${item.platform}</td>
-        <td>${item.questionKey}</td>
-        <td>${item.title}</td>
-        <td><a href="${item.url}" target="_blank" rel="noreferrer">Open</a></td>
-      </tr>`
-    )
-    .join("");
-
-  questionsTable.innerHTML = `
-    <table>
-      <thead>
-        <tr>
-          <th>Platform</th>
-          <th>Key</th>
-          <th>Title</th>
-          <th>URL</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>`;
 }
 
 function renderMappingsTable() {
   if (!cachedMappings.length) {
-    mappingsTable.innerHTML = '<div class="muted">No mappings found.</div>';
+    tables.mappings.innerHTML = '<div class="muted" style="padding:16px">No mappings found.</div>';
     return;
   }
-  const groupById = new Map(cachedGroups.map((item) => [item._id || item.id, item]));
-  const questionById = new Map(cachedQuestions.map((item) => [item._id || item.id, item]));
+  const groupById = new Map(cachedGroups.map((g) => [g._id || g.id, g]));
+  const questionById = new Map(cachedQuestions.map((q) => [q._id || q.id, q]));
 
   const rows = cachedMappings
-    .map((item) => {
-      const group = groupById.get(item.groupId);
-      const question = questionById.get(item.questionId);
-      return `
-      <tr>
+    .map((m) => {
+      const group = groupById.get(m.groupId);
+      const question = questionById.get(m.questionId);
+      return `<tr>
         <td>${group?.groupName || "—"}</td>
         <td>${question?.questionKey || "—"}</td>
-        <td>${item.trialColumn}</td>
-        <td>${item.timeColumn}</td>
+        <td><code>${m.trialColumn}</code></td>
+        <td><code>${m.timeColumn}</code></td>
       </tr>`;
     })
     .join("");
 
-  mappingsTable.innerHTML = `
-    <table>
-      <thead>
-        <tr>
-          <th>Group</th>
-          <th>Question</th>
-          <th>Trial Column</th>
-          <th>Time Column</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>`;
-}
-
-function populateGroupOptions() {
-  fields.mappingGroupName.innerHTML = "";
-  const placeholder = document.createElement("option");
-  placeholder.value = "";
-  placeholder.textContent = "Select a group";
-  fields.mappingGroupName.appendChild(placeholder);
-
-  cachedGroups.forEach((item) => {
-    const option = document.createElement("option");
-    option.value = item.groupName;
-    option.textContent = item.groupName;
-    fields.mappingGroupName.appendChild(option);
-  });
-}
-
-function populateQuestionOptions() {
-  fields.mappingQuestionKey.innerHTML = "";
-  const placeholder = document.createElement("option");
-  placeholder.value = "";
-  placeholder.textContent = "Select a question";
-  fields.mappingQuestionKey.appendChild(placeholder);
-
-  cachedQuestions.forEach((item) => {
-    const option = document.createElement("option");
-    option.value = item.questionKey;
-    option.textContent = `${item.platform} • ${item.questionKey}`;
-    fields.mappingQuestionKey.appendChild(option);
-  });
+  tables.mappings.innerHTML = `<table>
+    <thead><tr><th>Group</th><th>Question</th><th>Trial Col</th><th>Time Col</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
 }
 
 function populateMappingDeleteOptions() {
-  fields.deleteMappingId.innerHTML = "";
-  const placeholder = document.createElement("option");
-  placeholder.value = "";
-  placeholder.textContent = "Select a mapping";
-  fields.deleteMappingId.appendChild(placeholder);
+  mappingFields.deleteMappingId.innerHTML = '<option value="">Select mapping</option>';
+  const groupById = new Map(cachedGroups.map((g) => [g._id || g.id, g]));
+  const questionById = new Map(cachedQuestions.map((q) => [q._id || q.id, q]));
 
-  const groupById = new Map(cachedGroups.map((item) => [item._id || item.id, item]));
-  const questionById = new Map(cachedQuestions.map((item) => [item._id || item.id, item]));
-
-  cachedMappings.forEach((item) => {
-    const option = document.createElement("option");
-    const group = groupById.get(item.groupId);
-    const question = questionById.get(item.questionId);
-    option.value = item._id || item.id;
-    option.textContent = `${group?.groupName || "—"} • ${question?.questionKey || "—"}`;
-    fields.deleteMappingId.appendChild(option);
+  cachedMappings.forEach((m) => {
+    const opt = document.createElement("option");
+    const group = groupById.get(m.groupId);
+    const question = questionById.get(m.questionId);
+    opt.value = m._id || m.id;
+    opt.textContent = `${group?.groupName || "—"} • ${question?.questionKey || "—"}`;
+    mappingFields.deleteMappingId.appendChild(opt);
   });
 }
 
+// ─── Event Listeners ──────────────────────────────────────────────
+
+settingsToggle.addEventListener("click", () => {
+  settingsPanel.classList.toggle("hidden");
+});
+
 document.getElementById("saveSettings").addEventListener("click", saveSettings);
-document.getElementById("createGroup").addEventListener("click", createGroup);
+document.getElementById("createPhase").addEventListener("click", createPhase);
+document.getElementById("loadPhases").addEventListener("click", loadPhases);
+document.getElementById("addToSheet").addEventListener("click", addQuestionToSheet);
 document.getElementById("createQuestion").addEventListener("click", createQuestion);
+document.getElementById("loadQuestions").addEventListener("click", loadQuestions);
+document.getElementById("createGroup").addEventListener("click", createGroup);
+document.getElementById("loadGroups").addEventListener("click", loadGroups);
 document.getElementById("createMapping").addEventListener("click", createMapping);
 document.getElementById("deleteMapping").addEventListener("click", deleteMapping);
-document.getElementById("loadGroups").addEventListener("click", loadGroups);
-document.getElementById("loadQuestions").addEventListener("click", loadQuestions);
 document.getElementById("loadMappings").addEventListener("click", loadMappings);
 
+filterPhaseId.addEventListener("change", loadQuestions);
+
+// ─── Init ─────────────────────────────────────────────────────────
+
 loadSettings();
-loadGroups();
-loadQuestions();
-loadMappings();
+Promise.all([loadPhases(), loadGroups(), loadQuestions(), loadMappings()]);

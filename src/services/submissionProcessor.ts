@@ -12,9 +12,16 @@ const languageExtensions: Record<string, string> = {
   "python3": "py",
   cpp: "cpp",
   "c++": "cpp",
+  c: "c",
   javascript: "js",
   typescript: "ts",
-  java: "java"
+  java: "java",
+  ruby: "rb",
+  kotlin: "kt",
+  scala: "scala",
+  swift: "swift",
+  go: "go",
+  rust: "rs"
 };
 
 function resolveExtension(language: string) {

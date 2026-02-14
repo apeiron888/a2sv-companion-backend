@@ -4,107 +4,250 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>A2SV Companion Admin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/admin/styles.css" />
   </head>
   <body>
     <div class="page">
-      <header>
-        <h1>A2SV Companion Admin</h1>
-        <p>Manage groups, questions, and mappings.</p>
+      <!-- ───── Header ───── -->
+      <header class="app-header">
+        <div class="header-left">
+          <div class="logo">🎓</div>
+          <div>
+            <h1>A2SV Companion Admin</h1>
+            <p class="subtitle">Manage phases, questions, groups &amp; mappings</p>
+          </div>
+        </div>
+        <button id="settingsToggle" class="btn btn-ghost">⚙ Settings</button>
       </header>
 
-      <div class="layout">
-        <div class="column">
-          <section class="card">
-            <h2>Admin Access</h2>
-            <div class="grid">
-              <label>
-                API Base URL
-                <input id="apiBase" type="text" placeholder="http://localhost:4000" />
-              </label>
-              <label>
-                Admin API Key
-                <input id="adminKey" type="password" placeholder="x-admin-key" />
-              </label>
-            </div>
-            <button id="saveSettings">Save Settings</button>
-            <p id="settingsStatus" class="status"></p>
-          </section>
-
-          <section class="card">
-            <h2>Create Group Sheet</h2>
-            <div class="grid">
-              <label>Group Name<input id="groupName" type="text" placeholder="G7A" /></label>
-              <label>Sheet ID<input id="sheetId" type="text" placeholder="Google Sheet ID" /></label>
-              <label>Name Column<input id="nameColumn" type="text" placeholder="B" /></label>
-              <label>Name Start Row<input id="nameStart" type="number" placeholder="5" /></label>
-              <label>Name End Row<input id="nameEnd" type="number" placeholder="50" /></label>
-            </div>
-            <button id="createGroup">Create Group</button>
-            <p id="groupStatus" class="status"></p>
-          </section>
-
-          <section class="card">
-            <h2>Create Question</h2>
-            <div class="grid">
-              <label>Platform<select id="questionPlatform"><option value="leetcode">LeetCode</option><option value="codeforces">Codeforces</option></select></label>
-              <label>Question Key<input id="questionKey" type="text" placeholder="two-sum" /></label>
-              <label>Title<input id="questionTitle" type="text" placeholder="Two Sum" /></label>
-              <label>URL<input id="questionUrl" type="text" placeholder="https://..." /></label>
-            </div>
-            <button id="createQuestion">Create Question</button>
-            <p id="questionStatus" class="status"></p>
-          </section>
-
-          <section class="card">
-            <h2>Create Mapping</h2>
-            <div class="grid">
-              <label>Group<select id="mappingGroupName"></select></label>
-              <label>Question<select id="mappingQuestionKey"></select></label>
-              <label>Trial Column<input id="mappingTrial" type="text" placeholder="C" /></label>
-              <label>Time Column<input id="mappingTime" type="text" placeholder="D" /></label>
-            </div>
-            <button id="createMapping">Create Mapping</button>
-            <p id="mappingStatus" class="status"></p>
-          </section>
-
-          <section class="card">
-            <h2>Delete Mapping</h2>
-            <div class="grid">
-              <label>Mapping<select id="deleteMappingId"></select></label>
-            </div>
-            <button id="deleteMapping">Delete Mapping</button>
-            <p id="deleteMappingStatus" class="status"></p>
-          </section>
-        </div>
-
-        <div class="column">
-          <section class="card">
-            <h2>Groups</h2>
-            <div class="grid">
-              <button id="loadGroups">Reload Groups</button>
-            </div>
-            <div class="table" id="groupsTable"></div>
-          </section>
-
-          <section class="card">
-            <h2>Questions</h2>
-            <div class="grid">
-              <button id="loadQuestions">Reload Questions</button>
-            </div>
-            <div class="table" id="questionsTable"></div>
-          </section>
-
-          <section class="card">
-            <h2>Mappings</h2>
-            <div class="grid">
-              <button id="loadMappings">Reload Mappings</button>
-            </div>
-            <div class="table" id="mappingsTable"></div>
-          </section>
+      <!-- ───── Settings Panel (collapsible) ───── -->
+      <div id="settingsPanel" class="settings-panel hidden">
+        <div class="card glass">
+          <h2>Connection Settings</h2>
+          <div class="form-row">
+            <label>
+              API Base URL
+              <input id="apiBase" type="text" placeholder="http://localhost:4000" />
+            </label>
+            <label>
+              Admin API Key
+              <input id="adminKey" type="password" placeholder="x-admin-key" />
+            </label>
+            <button id="saveSettings" class="btn btn-sm">Save</button>
+          </div>
+          <p id="settingsStatus" class="status-text"></p>
         </div>
       </div>
+
+      <!-- ───── Tab Navigation ───── -->
+      <nav class="tab-nav" id="tabNav">
+        <button class="tab-btn active" data-tab="phases">Phases</button>
+        <button class="tab-btn" data-tab="questions">Questions</button>
+        <button class="tab-btn" data-tab="groups">Groups</button>
+        <button class="tab-btn" data-tab="mappings">Mappings</button>
+      </nav>
+
+      <!-- ═══════════════════════════════════════════════ -->
+      <!--  PHASES TAB                                     -->
+      <!-- ═══════════════════════════════════════════════ -->
+      <section class="tab-content active" id="tab-phases">
+        <div class="card glass">
+          <h2>Create New Phase</h2>
+          <div class="form-grid">
+            <label>Phase Name <input id="phaseName" type="text" placeholder="Onboarding" /></label>
+            <label>Tab Name <input id="phaseTabName" type="text" placeholder="Onboarding" /></label>
+            <label>Master Sheet ID <input id="phaseMasterSheetId" type="text" placeholder="1ABC...xyz" /></label>
+            <label>Start Column <input id="phaseStartColumn" type="text" placeholder="H" value="H" /></label>
+            <label>Order <input id="phaseOrder" type="number" placeholder="0" value="0" /></label>
+          </div>
+          <div class="form-actions">
+            <button id="createPhase" class="btn btn-primary">Create Phase</button>
+            <p id="phaseStatus" class="status-text"></p>
+          </div>
+        </div>
+
+        <div class="card glass">
+          <div class="card-header">
+            <h2>Active Phases</h2>
+            <button id="loadPhases" class="btn btn-sm btn-ghost">↻ Reload</button>
+          </div>
+          <div id="phasesTable" class="table-wrap"></div>
+        </div>
+      </section>
+
+      <!-- ═══════════════════════════════════════════════ -->
+      <!--  QUESTIONS TAB                                  -->
+      <!-- ═══════════════════════════════════════════════ -->
+      <section class="tab-content" id="tab-questions">
+        <div class="card glass accent-card">
+          <h2>Add Question to Master Sheet</h2>
+          <p class="hint">This writes the question header to the Google Sheet with full formatting and auto-creates mappings for all active groups.</p>
+
+          <div class="form-grid">
+            <label>Phase
+              <select id="addPhaseId"></select>
+            </label>
+            <label>Platform
+              <select id="addPlatform">
+                <option value="leetcode">LeetCode</option>
+                <option value="codeforces">Codeforces</option>
+                <option value="hackerrank">HackerRank</option>
+              </select>
+            </label>
+            <label>Question Key <input id="addQuestionKey" type="text" placeholder="two-sum" /></label>
+            <label>Title <input id="addTitle" type="text" placeholder="Two Sum" /></label>
+            <label>URL <input id="addUrl" type="text" placeholder="https://leetcode.com/problems/two-sum" /></label>
+            <label>Difficulty
+              <select id="addDifficulty">
+                <option value="Easy">Easy</option>
+                <option value="Medium">Medium</option>
+                <option value="Hard">Hard</option>
+              </select>
+            </label>
+          </div>
+
+          <!-- Tags Input -->
+          <div class="tags-section">
+            <label>Tags</label>
+            <div class="tags-input-wrap">
+              <div id="tagChips" class="tag-chips"></div>
+              <input id="tagInput" type="text" placeholder="Type a tag and press Enter" />
+            </div>
+          </div>
+
+          <!-- Preview -->
+          <div class="sheet-preview" id="sheetPreview">
+            <div class="preview-label">Preview • Next column: <span id="previewColumn">—</span></div>
+            <div class="preview-grid">
+              <div class="preview-cell diff-cell" id="previewDiff">Easy</div>
+              <div class="preview-cell empty-cell"></div>
+              <div class="preview-cell">0%</div>
+              <div class="preview-cell empty-cell">0</div>
+              <div class="preview-cell" id="previewTags">—</div>
+              <div class="preview-cell empty-cell"></div>
+              <div class="preview-cell plat-cell" id="previewPlatform">LeetCode</div>
+              <div class="preview-cell empty-cell"></div>
+              <div class="preview-cell title-cell" id="previewTitle">—</div>
+              <div class="preview-cell time-cell">⏱ min</div>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button id="addToSheet" class="btn btn-primary btn-lg">Add to Master Sheet & DB</button>
+            <p id="addToSheetStatus" class="status-text"></p>
+          </div>
+        </div>
+
+        <!-- Simple Question Create (DB only) -->
+        <div class="card glass">
+          <h2>Create Question (DB only)</h2>
+          <div class="form-grid">
+            <label>Platform
+              <select id="questionPlatform">
+                <option value="leetcode">LeetCode</option>
+                <option value="codeforces">Codeforces</option>
+                <option value="hackerrank">HackerRank</option>
+              </select>
+            </label>
+            <label>Question Key <input id="questionKey" type="text" placeholder="two-sum" /></label>
+            <label>Title <input id="questionTitle" type="text" placeholder="Two Sum" /></label>
+            <label>URL <input id="questionUrl" type="text" placeholder="https://..." /></label>
+          </div>
+          <div class="form-actions">
+            <button id="createQuestion" class="btn btn-sm">Create Question</button>
+            <p id="questionStatus" class="status-text"></p>
+          </div>
+        </div>
+
+        <div class="card glass">
+          <div class="card-header">
+            <h2>Questions</h2>
+            <div class="card-header-actions">
+              <label class="inline-label">Phase:
+                <select id="filterPhaseId">
+                  <option value="">All</option>
+                </select>
+              </label>
+              <button id="loadQuestions" class="btn btn-sm btn-ghost">↻ Reload</button>
+            </div>
+          </div>
+          <div id="questionsTable" class="table-wrap"></div>
+        </div>
+      </section>
+
+      <!-- ═══════════════════════════════════════════════ -->
+      <!--  GROUPS TAB                                     -->
+      <!-- ═══════════════════════════════════════════════ -->
+      <section class="tab-content" id="tab-groups">
+        <div class="card glass">
+          <h2>Create Group Sheet</h2>
+          <div class="form-grid">
+            <label>Group Name <input id="groupName" type="text" placeholder="G7A" /></label>
+            <label>Sheet ID <input id="sheetId" type="text" placeholder="Google Sheet ID" /></label>
+            <label>Name Column <input id="nameColumn" type="text" placeholder="B" /></label>
+            <label>Name Start Row <input id="nameStart" type="number" placeholder="5" /></label>
+            <label>Name End Row <input id="nameEnd" type="number" placeholder="50" /></label>
+          </div>
+          <div class="form-actions">
+            <button id="createGroup" class="btn btn-primary">Create Group</button>
+            <p id="groupStatus" class="status-text"></p>
+          </div>
+        </div>
+
+        <div class="card glass">
+          <div class="card-header">
+            <h2>Groups</h2>
+            <button id="loadGroups" class="btn btn-sm btn-ghost">↻ Reload</button>
+          </div>
+          <div id="groupsTable" class="table-wrap"></div>
+        </div>
+      </section>
+
+      <!-- ═══════════════════════════════════════════════ -->
+      <!--  MAPPINGS TAB                                   -->
+      <!-- ═══════════════════════════════════════════════ -->
+      <section class="tab-content" id="tab-mappings">
+        <div class="card glass">
+          <h2>Create Mapping (Manual)</h2>
+          <p class="hint">Mappings are auto-created when adding questions via the "Add to Master Sheet" feature. Use this only for manual overrides.</p>
+          <div class="form-grid">
+            <label>Group <select id="mappingGroupName"></select></label>
+            <label>Question <select id="mappingQuestionKey"></select></label>
+            <label>Trial Column <input id="mappingTrial" type="text" placeholder="C" /></label>
+            <label>Time Column <input id="mappingTime" type="text" placeholder="D" /></label>
+          </div>
+          <div class="form-actions">
+            <button id="createMapping" class="btn btn-sm">Create Mapping</button>
+            <p id="mappingStatus" class="status-text"></p>
+          </div>
+        </div>
+
+        <div class="card glass">
+          <h2>Delete Mapping</h2>
+          <div class="form-grid">
+            <label>Mapping <select id="deleteMappingId"></select></label>
+          </div>
+          <div class="form-actions">
+            <button id="deleteMapping" class="btn btn-sm btn-danger">Delete Mapping</button>
+            <p id="deleteMappingStatus" class="status-text"></p>
+          </div>
+        </div>
+
+        <div class="card glass">
+          <div class="card-header">
+            <h2>Mappings</h2>
+            <button id="loadMappings" class="btn btn-sm btn-ghost">↻ Reload</button>
+          </div>
+          <div id="mappingsTable" class="table-wrap"></div>
+        </div>
+      </section>
     </div>
+
+    <!-- Toast Container -->
+    <div id="toastContainer" class="toast-container"></div>
 
     <script src="/admin/admin.js"></script>
   </body>

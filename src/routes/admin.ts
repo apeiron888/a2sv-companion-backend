@@ -4,8 +4,23 @@ import { requireAdmin } from "../middleware/admin.js";
 import { GroupSheetModel } from "../models/GroupSheet.js";
 import { QuestionModel } from "../models/Question.js";
 import { QuestionGroupMappingModel } from "../models/QuestionGroupMapping.js";
+import { PhaseModel } from "../models/Phase.js";
+import { addQuestionToMasterSheet, getNextAvailableColumn } from "../services/masterSheetService.js";
 
 export const adminRouter = Router();
+
+// ─── Phase Schemas ────────────────────────────────────────────────
+
+const phaseSchema = z.object({
+  name: z.string().min(2),
+  tab_name: z.string().min(1),
+  master_sheet_id: z.string().min(5),
+  start_column: z.string().min(1).default("H"),
+  order: z.coerce.number().int().min(0).default(0),
+  active: z.boolean().optional()
+});
+
+// ─── Group Schemas ────────────────────────────────────────────────
 
 const groupSchema = z.object({
   group_name: z.string().min(2),
@@ -16,12 +31,26 @@ const groupSchema = z.object({
   active: z.boolean().optional()
 });
 
+// ─── Question Schemas ─────────────────────────────────────────────
+
 const questionSchema = z.object({
-  platform: z.enum(["leetcode", "codeforces"]),
+  platform: z.enum(["leetcode", "codeforces", "hackerrank"]),
   question_key: z.string().min(1),
   title: z.string().min(1),
   url: z.string().url()
 });
+
+const addToSheetSchema = z.object({
+  phase_id: z.string().min(1),
+  platform: z.enum(["leetcode", "codeforces", "hackerrank"]),
+  question_key: z.string().min(1),
+  title: z.string().min(1),
+  url: z.string().url(),
+  difficulty: z.enum(["Easy", "Medium", "Hard"]),
+  tags: z.array(z.string()).default([])
+});
+
+// ─── Mapping Schemas ──────────────────────────────────────────────
 
 const mappingSchema = z.object({
   question_id: z.string().min(1),
@@ -29,6 +58,85 @@ const mappingSchema = z.object({
   trial_column: z.string().min(1),
   time_column: z.string().min(1)
 });
+
+// ═══════════════════════════════════════════════════════════════════
+//  PHASE ROUTES
+// ═══════════════════════════════════════════════════════════════════
+
+adminRouter.post("/phases", requireAdmin, async (req, res, next) => {
+  try {
+    const payload = phaseSchema.parse(req.body);
+    const phase = await PhaseModel.create({
+      name: payload.name,
+      tabName: payload.tab_name,
+      masterSheetId: payload.master_sheet_id,
+      startColumn: payload.start_column,
+      order: payload.order,
+      active: payload.active ?? true
+    });
+    return res.json({ id: phase.id });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+adminRouter.get("/phases", requireAdmin, async (_req, res, next) => {
+  try {
+    const phases = await PhaseModel.find().sort({ order: 1 });
+
+    // Enrich with question count per phase
+    const enriched = await Promise.all(
+      phases.map(async (phase) => {
+        const questionCount = await QuestionModel.countDocuments({ phaseId: phase._id });
+        return {
+          ...phase.toJSON(),
+          questionCount
+        };
+      })
+    );
+
+    return res.json({ phases: enriched });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+adminRouter.put("/phases/:id", requireAdmin, async (req, res, next) => {
+  try {
+    const payload = phaseSchema.partial().parse(req.body);
+    const phase = await PhaseModel.findByIdAndUpdate(
+      req.params.id,
+      {
+        ...(payload.name && { name: payload.name }),
+        ...(payload.tab_name && { tabName: payload.tab_name }),
+        ...(payload.master_sheet_id && { masterSheetId: payload.master_sheet_id }),
+        ...(payload.start_column && { startColumn: payload.start_column }),
+        ...(payload.order !== undefined && { order: payload.order }),
+        ...(payload.active !== undefined && { active: payload.active })
+      },
+      { new: true }
+    );
+    if (!phase) {
+      return res.status(404).json({ success: false, message: "Phase not found" });
+    }
+    return res.json({ success: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+adminRouter.delete("/phases/:id", requireAdmin, async (req, res, next) => {
+  try {
+    await PhaseModel.findByIdAndDelete(req.params.id);
+    return res.json({ success: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  GROUP ROUTES
+// ═══════════════════════════════════════════════════════════════════
 
 adminRouter.post("/groups", requireAdmin, async (req, res, next) => {
   try {
@@ -89,6 +197,10 @@ adminRouter.delete("/groups/:id", requireAdmin, async (req, res, next) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════
+//  QUESTION ROUTES
+// ═══════════════════════════════════════════════════════════════════
+
 adminRouter.post("/questions", requireAdmin, async (req, res, next) => {
   try {
     const payload = questionSchema.parse(req.body);
@@ -104,9 +216,54 @@ adminRouter.post("/questions", requireAdmin, async (req, res, next) => {
   }
 });
 
-adminRouter.get("/questions", requireAdmin, async (_req, res, next) => {
+/**
+ * Add question to DB AND write it to the Master Sheet with formatting.
+ * This also auto-creates QuestionGroupMappings for all active groups.
+ */
+adminRouter.post("/questions/add-to-sheet", requireAdmin, async (req, res, next) => {
   try {
-    const questions = await QuestionModel.find().sort({ platform: 1, questionKey: 1 });
+    const payload = addToSheetSchema.parse(req.body);
+    const result = await addQuestionToMasterSheet({
+      phaseId: payload.phase_id,
+      platform: payload.platform,
+      questionKey: payload.question_key,
+      title: payload.title,
+      url: payload.url,
+      difficulty: payload.difficulty,
+      tags: payload.tags
+    });
+
+    return res.json({
+      question_id: result.questionId,
+      master_column: result.masterColumn,
+      time_column: result.timeColumn,
+      mappings_created: result.mappingsCreated,
+      sheet_updated: result.sheetUpdated
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * Preview next available column for a phase.
+ */
+adminRouter.get("/questions/next-column/:phaseId", requireAdmin, async (req, res, next) => {
+  try {
+    const result = await getNextAvailableColumn(req.params.phaseId);
+    return res.json(result);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+adminRouter.get("/questions", requireAdmin, async (req, res, next) => {
+  try {
+    const filter: any = {};
+    if (req.query.phase_id) {
+      filter.phaseId = req.query.phase_id;
+    }
+    const questions = await QuestionModel.find(filter).sort({ createdAt: -1 }).populate("phaseId");
     return res.json({ questions });
   } catch (error) {
     return next(error);
@@ -143,6 +300,10 @@ adminRouter.delete("/questions/:id", requireAdmin, async (req, res, next) => {
     return next(error);
   }
 });
+
+// ═══════════════════════════════════════════════════════════════════
+//  MAPPING ROUTES
+// ═══════════════════════════════════════════════════════════════════
 
 adminRouter.post("/mappings", requireAdmin, async (req, res, next) => {
   try {

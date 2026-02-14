@@ -21,7 +21,7 @@ const submissionSchema = z.object({
   time_minutes: z.coerce.number().int().min(0)
 });
 
-async function handleSubmission(req: AuthRequest, res: Response, platform: "leetcode" | "codeforces") {
+async function handleSubmission(req: AuthRequest, res: Response, platform: "leetcode" | "codeforces" | "hackerrank") {
   const payload = submissionSchema.parse(req.body);
   const user = await UserModel.findById(req.userId);
 
@@ -70,6 +70,14 @@ submissionsRouter.post("/leetcode", requireAuth, async (req, res, next) => {
 submissionsRouter.post("/codeforces", requireAuth, async (req, res, next) => {
   try {
     await handleSubmission(req, res, "codeforces");
+  } catch (error) {
+    next(error);
+  }
+});
+
+submissionsRouter.post("/hackerrank", requireAuth, async (req, res, next) => {
+  try {
+    await handleSubmission(req, res, "hackerrank");
   } catch (error) {
     next(error);
   }
