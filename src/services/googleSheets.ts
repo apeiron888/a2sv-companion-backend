@@ -185,6 +185,7 @@ export async function writeQuestionHeaderToSheet(params: {
   const sheets = getSheetsClient();
 
   const prefix = `'${tabName}'!`;
+  const titleFormula = `=HYPERLINK("${url}", "${title}")`;
 
   // 1) Write values
   await sheets.spreadsheets.values.batchUpdate({
@@ -200,7 +201,7 @@ export async function writeQuestionHeaderToSheet(params: {
         { range: `${prefix}${timeColumn}3`, values: [[""]] },
         { range: `${prefix}${questionColumn}4`, values: [[PLATFORM_DISPLAY_NAMES[platform] || platform]] },
         { range: `${prefix}${timeColumn}4`, values: [[""]] },
-        { range: `${prefix}${questionColumn}5`, values: [[title]] },
+        { range: `${prefix}${questionColumn}5`, values: [[titleFormula]] },
         { range: `${prefix}${timeColumn}5`, values: [["⏱ min"]] }
       ]
     }
@@ -222,16 +223,19 @@ export async function writeQuestionHeaderToSheet(params: {
       textColor: diffText,
       bold: true,
       fontSize: 11,
+      fontFamily: "Nunito",
       hAlign: "CENTER"
     }),
     // Row 2: Completion % (question column)
     makeCellFormatRequest(sheetGid, 1, 2, qColIndex, qColIndex + 1, {
       fontSize: 11,
+      fontFamily: "Nunito",
       hAlign: "CENTER"
     }),
     // Row 3: Tags (question column)
     makeCellFormatRequest(sheetGid, 2, 3, qColIndex, qColIndex + 1, {
       fontSize: 11,
+      fontFamily: "Nunito",
       hAlign: "CENTER"
     }),
     // Row 4: Platform (question column)
@@ -240,6 +244,7 @@ export async function writeQuestionHeaderToSheet(params: {
       textColor: WHITE_TEXT,
       bold: true,
       fontSize: 11,
+      fontFamily: "Nunito",
       hAlign: "CENTER"
     }),
     // Row 5: Question title (question column)
@@ -248,6 +253,7 @@ export async function writeQuestionHeaderToSheet(params: {
       textColor: WHITE_TEXT,
       bold: true,
       fontSize: 11,
+      fontFamily: "Nunito",
       hAlign: "CENTER",
       wrapStrategy: "WRAP"
     }),
@@ -256,6 +262,7 @@ export async function writeQuestionHeaderToSheet(params: {
       backgroundColor: TIME_LABEL_BG,
       textColor: BLACK_TEXT,
       fontSize: 11,
+      fontFamily: "Nunito",
       hAlign: "CENTER"
     }),
     // Column width: question column = 130px
@@ -303,6 +310,7 @@ function makeCellFormatRequest(
     textColor?: { red: number; green: number; blue: number };
     bold?: boolean;
     fontSize?: number;
+    fontFamily?: string;
     hAlign?: string;
     wrapStrategy?: string;
   }
@@ -327,6 +335,10 @@ function makeCellFormatRequest(
   if (opts.fontSize !== undefined) {
     textFormat.fontSize = opts.fontSize;
     fields.push("userEnteredFormat.textFormat.fontSize");
+  }
+  if (opts.fontFamily) {
+    textFormat.fontFamily = opts.fontFamily;
+    fields.push("userEnteredFormat.textFormat.fontFamily");
   }
   if (Object.keys(textFormat).length > 0) {
     cellFormat.textFormat = textFormat;
@@ -355,4 +367,96 @@ function makeCellFormatRequest(
       fields: fields.join(",")
     }
   };
+}
+
+function normalizeRange(tabName: string, range: string) {
+  if (range.includes("!")) {
+    return range;
+  }
+  return `'${tabName}'!${range}`;
+}
+
+function parseA1Range(range: string, defaultTabName: string) {
+  const normalized = normalizeRange(defaultTabName, range);
+  const [tab, a1] = normalized.split("!");
+  const cleanedTab = tab.replace(/^'/, "").replace(/'$/, "");
+
+  const match = a1.match(/^([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?$/i);
+  if (!match) {
+    throw new Error(`Unsupported range format: ${range}`);
+  }
+
+  const startCol = columnToNumber(match[1].toUpperCase()) - 1;
+  const startRow = parseInt(match[2], 10) - 1;
+  const endCol = match[3] ? columnToNumber(match[3].toUpperCase()) : columnToNumber(match[1].toUpperCase());
+  const endRow = match[4] ? parseInt(match[4], 10) : parseInt(match[2], 10);
+
+  return {
+    tabName: cleanedTab,
+    startCol,
+    endCol,
+    startRow,
+    endRow
+  };
+}
+
+export async function batchWriteWithFormatting(params: {
+  sheetId: string;
+  tabName: string;
+  updates: Array<{
+    range: string;
+    values: string[][];
+    backgroundColor?: { red: number; green: number; blue: number };
+    textColor?: { red: number; green: number; blue: number };
+    bold?: boolean;
+    fontSize?: number;
+    horizontalAlignment?: string;
+  }>;
+}) {
+  const { sheetId, tabName, updates } = params;
+  const sheets = getSheetsClient();
+
+  await sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId: sheetId,
+    requestBody: {
+      valueInputOption: "USER_ENTERED",
+      data: updates.map((update) => ({
+        range: normalizeRange(tabName, update.range),
+        values: update.values
+      }))
+    }
+  });
+
+  const requests: any[] = [];
+  for (const update of updates) {
+    if (
+      update.backgroundColor ||
+      update.textColor ||
+      update.bold !== undefined ||
+      update.fontSize !== undefined ||
+      update.horizontalAlignment
+    ) {
+      const { tabName: resolvedTab, startCol, endCol, startRow, endRow } = parseA1Range(
+        update.range,
+        tabName
+      );
+      const sheetGid = await getSheetGidByName(sheetId, resolvedTab);
+      requests.push(
+        makeCellFormatRequest(sheetGid, startRow, endRow, startCol, endCol, {
+          backgroundColor: update.backgroundColor,
+          textColor: update.textColor,
+          bold: update.bold,
+          fontSize: update.fontSize,
+          hAlign: update.horizontalAlignment
+        })
+      );
+    }
+  }
+
+  if (requests.length) {
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: sheetId,
+      requestBody: { requests }
+    });
+  }
 }
