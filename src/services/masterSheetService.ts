@@ -3,11 +3,11 @@ import { QuestionModel } from "../models/Question.js";
 import { GroupSheetModel } from "../models/GroupSheet.js";
 import { QuestionGroupMappingModel } from "../models/QuestionGroupMapping.js";
 import { writeQuestionHeaderToSheet, readRange } from "./googleSheets.js";
-import { getNextColumnPair, columnToNumber, numberToColumn } from "./columnUtils.js";
+import { nextQuestionColumnPair, columnToNumber, numberToColumn } from "./columnUtils.js";
 
 export interface AddQuestionToSheetParams {
     phaseId: string;
-    platform: "leetcode" | "codeforces" | "hackerrank";
+    platform: "leetcode" | "codeforces" | "hackerrank" | "atcoder" | "geeksforgeeks";
     questionKey: string;
     title: string;
     url: string;
@@ -39,7 +39,7 @@ export async function addQuestionToMasterSheet(
     }
 
     // 2. Calculate next column pair
-    let { questionColumn, timeColumn } = getNextColumnPair(
+    let { questionColumn, timeColumn } = nextQuestionColumnPair(
         phase.lastQuestionColumn as string | null,
         phase.startColumn as string
     );
@@ -155,7 +155,7 @@ export async function getNextAvailableColumn(phaseId: string): Promise<{
         throw new Error("Phase not found");
     }
 
-    const { questionColumn, timeColumn } = getNextColumnPair(
+    const { questionColumn, timeColumn } = nextQuestionColumnPair(
         phase.lastQuestionColumn as string | null,
         phase.startColumn as string
     );
