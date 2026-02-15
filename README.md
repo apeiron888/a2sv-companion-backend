@@ -53,9 +53,11 @@ npm run build
 npm start
 ```
 
-## Admin UI
-The admin UI is served at `/admin`.
-Use it to create groups, questions, and mappings.
+## Admin Extension
+Use the Admin Sync page in the Chrome extension options to:
+- Scan the master sheet for new tabs/questions
+- Approve sync to create phases/questions/mappings
+- Register group sheets and check tab health
 
 ## Important Notes
 - Share your Google Sheet with the service account email.

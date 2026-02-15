@@ -2,7 +2,7 @@ import { env } from "../config/env.js";
 import { PhaseModel } from "../models/Phase.js";
 import { QuestionModel } from "../models/Question.js";
 import { GroupSheetModel } from "../models/GroupSheet.js";
-import { columnToNumber, numberToColumn } from "./columnUtils.js";
+import { columnToNumber, numberToColumn, shiftColumn } from "./columnUtils.js";
 import { getSpreadsheetTabs, readHeaderGrid } from "./googleSheets.js";
 
 const platformMap: Record<string, string> = {
@@ -101,6 +101,8 @@ export async function detectMasterSheetChanges(params?: { masterSheetId?: string
     throw new Error("MASTER_SHEET_ID is not configured");
   }
 
+  const groupStartColumn = env.GROUP_START_COLUMN || "H";
+
   const tabs = await getSpreadsheetTabs(masterSheetId);
   const phases = await PhaseModel.find({ masterSheetId });
   const phaseByTab = new Map(phases.map((phase) => [phase.tabName, phase]));
@@ -121,6 +123,8 @@ export async function detectMasterSheetChanges(params?: { masterSheetId?: string
     tags: string[];
     masterColumn: string;
     timeColumn: string;
+    groupColumn: string;
+    groupTimeColumn: string;
   }>;
 
   for (const tab of tabs) {
@@ -226,6 +230,10 @@ export async function detectMasterSheetChanges(params?: { masterSheetId?: string
         continue;
       }
 
+      const groupOffset = columnToNumber(groupStartColumn) - columnToNumber(startColumn);
+      const groupColumn = shiftColumn(numberToColumn(colNumber), groupOffset);
+      const groupTimeColumn = shiftColumn(numberToColumn(colNumber + 1), groupOffset);
+
       newQuestions.push({
         tabName: tab.title,
         platform,
@@ -235,7 +243,9 @@ export async function detectMasterSheetChanges(params?: { masterSheetId?: string
         difficulty,
         tags,
         masterColumn: numberToColumn(colNumber),
-        timeColumn: numberToColumn(colNumber + 1)
+        timeColumn: numberToColumn(colNumber + 1),
+        groupColumn,
+        groupTimeColumn
       });
     }
   }

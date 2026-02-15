@@ -23,5 +23,6 @@ export const env = {
   ENCRYPTION_KEY: process.env.ENCRYPTION_KEY || "",
   REFRESH_TOKEN_TTL_DAYS: Number(process.env.REFRESH_TOKEN_TTL_DAYS || 30),
   SENTRY_DSN: process.env.SENTRY_DSN || "",
-  CORS_ORIGINS: toArray(process.env.CORS_ORIGINS)
+  CORS_ORIGINS: toArray(process.env.CORS_ORIGINS),
+  GROUP_START_COLUMN: process.env.GROUP_START_COLUMN || "H"
 };

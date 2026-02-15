@@ -3,7 +3,8 @@ import { QuestionModel } from "../models/Question.js";
 import { GroupSheetModel } from "../models/GroupSheet.js";
 import { QuestionGroupMappingModel } from "../models/QuestionGroupMapping.js";
 import { writeQuestionHeaderToSheet, readRange } from "./googleSheets.js";
-import { nextQuestionColumnPair, columnToNumber, numberToColumn } from "./columnUtils.js";
+import { nextQuestionColumnPair, columnToNumber, numberToColumn, shiftColumn } from "./columnUtils.js";
+import { env } from "../config/env.js";
 
 export interface AddQuestionToSheetParams {
     phaseId: string;
@@ -116,14 +117,18 @@ export async function addQuestionToMasterSheet(
     // 7. Auto-create QuestionGroupMapping for all active groups
     const activeGroups = await GroupSheetModel.find({ active: true });
     let mappingsCreated = 0;
+    const groupStartColumn = env.GROUP_START_COLUMN || "H";
+    const offset = columnToNumber(groupStartColumn) - columnToNumber(phase.startColumn as string);
+    const trialColumn = shiftColumn(questionColumn, offset);
+    const groupTimeColumn = shiftColumn(timeColumn, offset);
 
     for (const group of activeGroups) {
         try {
             await QuestionGroupMappingModel.create({
                 questionId: question._id,
                 groupId: group._id,
-                trialColumn: questionColumn,
-                timeColumn
+                trialColumn,
+                timeColumn: groupTimeColumn
             });
             mappingsCreated += 1;
         } catch (error: any) {

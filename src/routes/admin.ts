@@ -6,7 +6,7 @@ import { PhaseModel } from "../models/Phase.js";
 import { QuestionModel } from "../models/Question.js";
 import { QuestionGroupMappingModel } from "../models/QuestionGroupMapping.js";
 import { addQuestionToMasterSheet, getNextAvailableColumn } from "../services/masterSheetService.js";
-import { columnToNumber, numberToColumn } from "../services/columnUtils.js";
+import { columnToNumber, numberToColumn, shiftColumn } from "../services/columnUtils.js";
 import { checkGroupSheetTabs, detectMasterSheetChanges } from "../services/syncService.js";
 import { env } from "../config/env.js";
 
@@ -443,6 +443,7 @@ adminRouter.post("/sync/approve", requireAdmin, async (req, res, next) => {
 
     const phaseMap = new Map(phases.map((phase) => [phase.tabName, phase]));
     const groups = await GroupSheetModel.find({ active: true });
+    const groupStartColumn = env.GROUP_START_COLUMN || "H";
 
     const phaseColumnUpdates = new Map<string, number>();
 
@@ -486,6 +487,9 @@ adminRouter.post("/sync/approve", requireAdmin, async (req, res, next) => {
       createdQuestions.push(created.id);
 
       if (groups.length) {
+        const offset = columnToNumber(groupStartColumn) - columnToNumber(phase.startColumn || "E");
+        const trialColumn = shiftColumn(question.master_column, offset);
+        const timeColumn = shiftColumn(question.time_column, offset);
         await QuestionGroupMappingModel.bulkWrite(
           groups.map((group) => ({
             updateOne: {
@@ -494,8 +498,8 @@ adminRouter.post("/sync/approve", requireAdmin, async (req, res, next) => {
                 $setOnInsert: {
                   questionId: created._id,
                   groupId: group._id,
-                  trialColumn: question.master_column,
-                  timeColumn: question.time_column
+                  trialColumn,
+                  timeColumn
                 }
               },
               upsert: true

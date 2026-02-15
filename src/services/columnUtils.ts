@@ -42,3 +42,7 @@ export function nextQuestionColumnPair(lastQuestionColumn: string | null, startC
     timeColumn: numberToColumn(nextQuestionNumber + 1)
   };
 }
+
+export function shiftColumn(column: string, offset: number) {
+  return numberToColumn(columnToNumber(column) + offset);
+}

@@ -1,6 +1,4 @@
 import express from "express";
-import path from "path";
-import { fileURLToPath } from "url";
 import { createRequire } from "module";
 import cors from "cors";
 import helmet from "helmet";
@@ -77,11 +75,6 @@ export function createApp() {
     legacyHeaders: false
   });
   app.use(limiter);
-
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = path.dirname(__filename);
-  const adminPath = path.join(__dirname, "..", "public", "admin");
-  app.use("/admin", express.static(adminPath));
 
   app.use("/health", healthRouter);
   app.use("/api/extension", extensionRouter);
