@@ -88,6 +88,11 @@ export async function detectMasterSheetChanges(params?: { masterSheetId?: string
   const phaseByTab = new Map(phases.map((phase) => [phase.tabName, phase]));
 
   const newTabs = [] as Array<{ tabName: string; startColumn: string }>;
+  const warnings = [] as Array<{
+    tabName: string;
+    column: string;
+    issue: string;
+  }>;
   const newQuestions = [] as Array<{
     tabName: string;
     platform: string;
@@ -155,6 +160,24 @@ export async function detectMasterSheetChanges(params?: { masterSheetId?: string
       const questionKey =
         extractQuestionKeyFromUrl(url) || (title ? slugifyTitle(title) : "");
 
+      if (!url) {
+        warnings.push({ tabName: tab.title, column: numberToColumn(colNumber), issue: "Missing URL" });
+      }
+      if (!platform) {
+        warnings.push({
+          tabName: tab.title,
+          column: numberToColumn(colNumber),
+          issue: "Missing platform"
+        });
+      }
+      if (platform && !platformMap[platform]) {
+        warnings.push({
+          tabName: tab.title,
+          column: numberToColumn(colNumber),
+          issue: `Unknown platform: ${platformRaw}`
+        });
+      }
+
       if (!questionKey || !platform) {
         continue;
       }
@@ -177,7 +200,7 @@ export async function detectMasterSheetChanges(params?: { masterSheetId?: string
     }
   }
 
-  return { masterSheetId, newTabs, newQuestions };
+  return { masterSheetId, newTabs, newQuestions, warnings };
 }
 
 export async function checkGroupSheetTabs(params?: { masterSheetId?: string }) {

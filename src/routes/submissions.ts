@@ -27,7 +27,7 @@ async function handleSubmission(req: AuthRequest, res: Response, platform: "leet
 async function handleSubmission(
   req: AuthRequest,
   res: Response,
-  platform: "leetcode" | "codeforces" | "hackerrank"
+  platform: "leetcode" | "codeforces" | "hackerrank" | "atcoder" | "geeksforgeeks"
 ) {
 >>>>>>> 8c60849 (feat: implement master sheet synchronization functionality with new endpoints and UI components)
   const payload = submissionSchema.parse(req.body);
@@ -86,6 +86,22 @@ submissionsRouter.post("/codeforces", requireAuth, async (req, res, next) => {
 submissionsRouter.post("/hackerrank", requireAuth, async (req, res, next) => {
   try {
     await handleSubmission(req, res, "hackerrank");
+  } catch (error) {
+    next(error);
+  }
+});
+
+submissionsRouter.post("/atcoder", requireAuth, async (req, res, next) => {
+  try {
+    await handleSubmission(req, res, "atcoder");
+  } catch (error) {
+    next(error);
+  }
+});
+
+submissionsRouter.post("/geeksforgeeks", requireAuth, async (req, res, next) => {
+  try {
+    await handleSubmission(req, res, "geeksforgeeks");
   } catch (error) {
     next(error);
   }
