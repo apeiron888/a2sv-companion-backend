@@ -302,9 +302,25 @@ input::placeholder {
   white-space: nowrap;
 }
 
+<<<<<<< HEAD
 .btn-primary {
   background: var(--accent-green);
   color: #0f172a;
+=======
+button.secondary {
+  background: #3b82f6;
+  color: #e2e8f0;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+button:hover {
+  filter: brightness(0.95);
+>>>>>>> 8c60849 (feat: implement master sheet synchronization functionality with new endpoints and UI components)
 }
 
 .btn-primary:hover {
@@ -391,6 +407,7 @@ input::placeholder {
   transition: border-color var(--transition);
 }
 
+<<<<<<< HEAD
 .tags-input-wrap:focus-within {
   border-color: var(--accent-blue);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
@@ -464,6 +481,15 @@ input::placeholder {
 
 .preview-label span {
   color: var(--accent-blue);
+=======
+.table input[type="checkbox"] {
+  transform: scale(1.1);
+}
+
+.table th {
+  color: #93c5fd;
+  background: #0f172a;
+>>>>>>> 8c60849 (feat: implement master sheet synchronization functionality with new endpoints and UI components)
   font-weight: 600;
 }
 

@@ -4,12 +4,17 @@
 
 // ─── DOM References ───────────────────────────────────────────────
 
-const apiBaseInput = document.getElementById("apiBase");
 const adminKeyInput = document.getElementById("adminKey");
 const settingsStatus = document.getElementById("settingsStatus");
 const settingsPanel = document.getElementById("settingsPanel");
 const settingsToggle = document.getElementById("settingsToggle");
 const toastContainer = document.getElementById("toastContainer");
+const masterSheetIdInput = document.getElementById("masterSheetId");
+const syncStatus = document.getElementById("syncStatus");
+const syncTabsTable = document.getElementById("syncTabsTable");
+const syncQuestionsTable = document.getElementById("syncQuestionsTable");
+const syncWarningsTable = document.getElementById("syncWarningsTable");
+const tabHealthTable = document.getElementById("tabHealthTable");
 
 // Phase fields
 const phaseFields = {
@@ -95,19 +100,23 @@ let cachedGroups = [];
 let cachedQuestions = [];
 let cachedMappings = [];
 let currentTags = [];
+let cachedSyncTabs = [];
+let cachedSyncQuestions = [];
+let cachedSyncWarnings = [];
+let cachedTabHealth = [];
 
 // ─── Settings ─────────────────────────────────────────────────────
 
 function loadSettings() {
-  const apiBase = localStorage.getItem("apiBase") || window.location.origin;
   const adminKey = localStorage.getItem("adminKey") || "";
-  apiBaseInput.value = apiBase;
+  const masterSheetId = localStorage.getItem("masterSheetId") || "";
   adminKeyInput.value = adminKey;
+  masterSheetIdInput.value = masterSheetId;
 }
 
 function saveSettings() {
-  localStorage.setItem("apiBase", apiBaseInput.value.trim());
   localStorage.setItem("adminKey", adminKeyInput.value.trim());
+  localStorage.setItem("masterSheetId", masterSheetIdInput.value.trim());
   settingsStatus.textContent = "Settings saved";
   showToast("Settings saved", "success");
   setTimeout(() => { settingsStatus.textContent = ""; }, 2000);
@@ -115,7 +124,7 @@ function saveSettings() {
 
 function getConfig() {
   return {
-    apiBase: apiBaseInput.value.trim(),
+    apiBase: window.location.origin,
     adminKey: adminKeyInput.value.trim()
   };
 }
@@ -651,7 +660,162 @@ async function loadMappings() {
     tables.mappings.innerHTML = `<div class="muted">${error.message}</div>`;
   }
 }
+async function runSync() {
+  syncStatus.textContent = "";
+  syncTabsTable.innerHTML = "";
+  syncQuestionsTable.innerHTML = "";
+  syncWarningsTable.innerHTML = "";
+  tabHealthTable.innerHTML = "";
+  const masterSheetId = masterSheetIdInput.value.trim();
+  try {
+    const query = masterSheetId ? `?master_sheet_id=${encodeURIComponent(masterSheetId)}` : "";
+    const data = await callApi(`/api/admin/sync${query}`, { method: "GET" });
+    cachedSyncTabs = data.newTabs || [];
+    cachedSyncQuestions = data.newQuestions || [];
+    cachedSyncWarnings = data.warnings || [];
+    renderSyncTabs();
+    renderSyncQuestions();
+    renderSyncWarnings();
+    syncStatus.textContent = `Sync completed. Tabs: ${cachedSyncTabs.length}, Questions: ${cachedSyncQuestions.length}, Warnings: ${cachedSyncWarnings.length}`;
+  } catch (error) {
+    syncStatus.textContent = error.message;
+  }
+}
 
+async function checkTabsHealth() {
+  syncStatus.textContent = "";
+  tabHealthTable.innerHTML = "";
+  const masterSheetId = masterSheetIdInput.value.trim();
+  try {
+    const query = masterSheetId ? `?master_sheet_id=${encodeURIComponent(masterSheetId)}` : "";
+    const data = await callApi(`/api/admin/tabs/health${query}`, { method: "GET" });
+    cachedTabHealth = data.groups || [];
+    renderTabHealth(data.expectedTabs || []);
+    const missingCount = cachedTabHealth.reduce(
+      (total, item) => total + (item.missingTabs?.length || 0),
+      0
+    );
+    syncStatus.textContent = `Tab health check completed. Missing tabs: ${missingCount}`;
+  } catch (error) {
+    syncStatus.textContent = error.message;
+  }
+}
+
+async function approveSync() {
+  syncStatus.textContent = "";
+  const masterSheetId = masterSheetIdInput.value.trim();
+
+  const selectedTabs = cachedSyncTabs.filter((tab) => {
+    const checkbox = document.querySelector(`input[data-tab-name="${tab.tabName}"]`);
+    return checkbox && checkbox.checked;
+  });
+
+  const selectedQuestions = cachedSyncQuestions.filter((question) => {
+    const checkbox = document.querySelector(
+      `input[data-question-key="${question.platform}:${question.questionKey}"]`
+    );
+    return checkbox && checkbox.checked;
+  });
+
+  if (!selectedTabs.length && !selectedQuestions.length) {
+    syncStatus.textContent = "Select at least one tab or question";
+    return;
+  }
+
+  const payload = {
+    ...(masterSheetId && { master_sheet_id: masterSheetId }),
+    tabs: selectedTabs.map((tab) => ({
+      tab_name: tab.tabName,
+      start_column: tab.startColumn
+    })),
+    questions: selectedQuestions.map((question) => ({
+      tab_name: question.tabName,
+      platform: question.platform,
+      question_key: question.questionKey,
+      title: question.title,
+      url: question.url,
+      difficulty: question.difficulty || undefined,
+      tags: question.tags || [],
+      master_column: question.masterColumn,
+      time_column: question.timeColumn
+    }))
+  };
+
+  try {
+    const data = await callApi("/api/admin/sync/approve", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    syncStatus.textContent = `Approved. Phases: ${data.created_phases}, Questions: ${data.created_questions}`;
+    await runSync();
+    await loadQuestions();
+    await loadMappings();
+  } catch (error) {
+    syncStatus.textContent = error.message;
+  }
+}
+
+function renderGroupsTable() {
+  if (!cachedGroups.length) {
+    tables.groups.innerHTML = '<div class="muted">No groups found.</div>';
+    return;
+  }
+  const rows = cachedGroups
+    .map(
+      (item) => `
+      <tr>
+        <td>${item.groupName}</td>
+        <td>${item.sheetId}</td>
+        <td>${item.nameColumn}${item.nameStartRow}-${item.nameEndRow}</td>
+        <td>${item.active ? "Active" : "Inactive"}</td>
+      </tr>`
+    )
+    .join("");
+
+  tables.groups.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>Group</th>
+          <th>Sheet ID</th>
+          <th>Name Range</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function renderQuestionsTable() {
+  if (!cachedQuestions.length) {
+    tables.questions.innerHTML = '<div class="muted">No questions found.</div>';
+    return;
+  }
+  const rows = cachedQuestions
+    .map(
+      (item) => `
+      <tr>
+        <td>${item.platform}</td>
+        <td>${item.questionKey}</td>
+        <td>${item.title}</td>
+        <td><a href="${item.url}" target="_blank" rel="noreferrer">Open</a></td>
+      </tr>`
+    )
+    .join("");
+
+  tables.questions.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>Platform</th>
+          <th>Key</th>
+          <th>Title</th>
+          <th>URL</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
 function renderMappingsTable() {
   if (!cachedMappings.length) {
     tables.mappings.innerHTML = '<div class="muted" style="padding:16px">No mappings found.</div>';
@@ -673,10 +837,180 @@ function renderMappingsTable() {
     })
     .join("");
 
-  tables.mappings.innerHTML = `<table>
-    <thead><tr><th>Group</th><th>Question</th><th>Trial Col</th><th>Time Col</th></tr></thead>
-    <tbody>${rows}</tbody>
-  </table>`;
+  tables.mappings.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>Group</th>
+          <th>Question</th>
+          <th>Trial Column</th>
+          <th>Time Column</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function renderSyncTabs() {
+  if (!cachedSyncTabs.length) {
+    syncTabsTable.innerHTML = '<div class="muted">No new tabs detected.</div>';
+    return;
+  }
+  const rows = cachedSyncTabs
+    .map(
+      (tab) => `
+      <tr>
+        <td><input type="checkbox" data-tab-name="${tab.tabName}" checked /></td>
+        <td>${tab.tabName}</td>
+        <td>${tab.startColumn || "E"}</td>
+      </tr>`
+    )
+    .join("");
+
+  syncTabsTable.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>Select</th>
+          <th>Tab</th>
+          <th>Start Column</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function renderSyncQuestions() {
+  if (!cachedSyncQuestions.length) {
+    syncQuestionsTable.innerHTML = '<div class="muted">No new questions detected.</div>';
+    return;
+  }
+  const rows = cachedSyncQuestions
+    .map(
+      (question) => `
+      <tr>
+        <td><input type="checkbox" data-question-key="${question.platform}:${question.questionKey}" checked /></td>
+        <td>${question.tabName}</td>
+        <td>${question.platform}</td>
+        <td>${question.questionKey}</td>
+        <td>${question.title}</td>
+        <td>${question.difficulty || "—"}</td>
+        <td>${(question.tags || []).join(", ") || "—"}</td>
+        <td>${question.url ? `<a href="${question.url}" target="_blank" rel="noreferrer">Open</a>` : "—"}</td>
+        <td>${question.masterColumn}/${question.timeColumn}</td>
+      </tr>`
+    )
+    .join("");
+
+  syncQuestionsTable.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>Select</th>
+          <th>Tab</th>
+          <th>Platform</th>
+          <th>Key</th>
+          <th>Title</th>
+          <th>Difficulty</th>
+          <th>Tags</th>
+          <th>URL</th>
+          <th>Cols</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function renderSyncWarnings() {
+  if (!cachedSyncWarnings.length) {
+    syncWarningsTable.innerHTML = '<div class="muted">No warnings detected.</div>';
+    return;
+  }
+  const rows = cachedSyncWarnings
+    .map(
+      (item) => `
+      <tr>
+        <td>${item.tabName}</td>
+        <td>${item.column}</td>
+        <td>${item.issue}</td>
+      </tr>`
+    )
+    .join("");
+
+  syncWarningsTable.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>Tab</th>
+          <th>Column</th>
+          <th>Issue</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function renderTabHealth(expectedTabs) {
+  if (!cachedTabHealth.length) {
+    tabHealthTable.innerHTML = '<div class="muted">No group sheets found.</div>';
+    return;
+  }
+  const rows = cachedTabHealth
+    .map((group) => {
+      const missing = group.missingTabs?.length ? group.missingTabs.join(", ") : "—";
+      return `
+      <tr>
+        <td>${group.groupName}</td>
+        <td>${missing}</td>
+      </tr>`;
+    })
+    .join("");
+
+  const expectedList = expectedTabs.length ? expectedTabs.join(", ") : "—";
+
+  tabHealthTable.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th colspan="2">Expected Tabs: ${expectedList}</th>
+        </tr>
+        <tr>
+          <th>Group</th>
+          <th>Missing Tabs</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function populateGroupOptions() {
+  fields.mappingGroupName.innerHTML = "";
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Select a group";
+  fields.mappingGroupName.appendChild(placeholder);
+
+  cachedGroups.forEach((item) => {
+    const option = document.createElement("option");
+    option.value = item.groupName;
+    option.textContent = item.groupName;
+    fields.mappingGroupName.appendChild(option);
+  });
+}
+
+function populateQuestionOptions() {
+  fields.mappingQuestionKey.innerHTML = "";
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Select a question";
+  fields.mappingQuestionKey.appendChild(placeholder);
+
+  cachedQuestions.forEach((item) => {
+    const option = document.createElement("option");
+    option.value = item.questionKey;
+    option.textContent = `${item.platform} • ${item.questionKey}`;
+    fields.mappingQuestionKey.appendChild(option);
+  });
 }
 
 function populateMappingDeleteOptions() {
@@ -711,6 +1045,9 @@ document.getElementById("loadGroups").addEventListener("click", loadGroups);
 document.getElementById("createMapping").addEventListener("click", createMapping);
 document.getElementById("deleteMapping").addEventListener("click", deleteMapping);
 document.getElementById("loadMappings").addEventListener("click", loadMappings);
+document.getElementById("runSync").addEventListener("click", runSync);
+document.getElementById("approveSync").addEventListener("click", approveSync);
+document.getElementById("checkTabs").addEventListener("click", checkTabsHealth);
 
 filterPhaseId.addEventListener("change", loadQuestions);
 

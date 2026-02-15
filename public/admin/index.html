@@ -23,6 +23,7 @@
         <button id="settingsToggle" class="btn btn-ghost">⚙ Settings</button>
       </header>
 
+<<<<<<< HEAD
       <!-- ───── Settings Panel (collapsible) ───── -->
       <div id="settingsPanel" class="settings-panel hidden">
         <div class="card glass">
@@ -39,6 +40,116 @@
             <button id="saveSettings" class="btn btn-sm">Save</button>
           </div>
           <p id="settingsStatus" class="status-text"></p>
+=======
+      <div class="layout">
+        <div class="column">
+          <section class="card">
+            <h2>Admin Access</h2>
+            <div class="grid">
+              <label>
+                API Base URL
+                <input id="apiBase" type="text" placeholder="http://localhost:4000" />
+              </label>
+              <label>
+                Admin API Key
+                <input id="adminKey" type="password" placeholder="x-admin-key" />
+              </label>
+            </div>
+            <button id="saveSettings">Save Settings</button>
+            <p id="settingsStatus" class="status"></p>
+          </section>
+
+          <section class="card">
+            <h2>Master Sheet Sync</h2>
+            <div class="grid">
+              <label>
+                Master Sheet ID
+                <input id="masterSheetId" type="text" placeholder="Google Sheet ID" />
+              </label>
+            </div>
+            <div class="actions">
+              <button id="runSync">Sync</button>
+              <button id="approveSync" class="secondary">Approve Selected</button>
+              <button id="checkTabs" class="secondary">Tab Health Check</button>
+            </div>
+            <p id="syncStatus" class="status"></p>
+            <div class="table" id="syncTabsTable"></div>
+            <div class="table" id="syncQuestionsTable"></div>
+            <div class="table" id="tabHealthTable"></div>
+          </section>
+
+          <section class="card">
+            <h2>Create Group Sheet</h2>
+            <div class="grid">
+              <label>Group Name<input id="groupName" type="text" placeholder="G7A" /></label>
+              <label>Sheet ID<input id="sheetId" type="text" placeholder="Google Sheet ID" /></label>
+              <label>Name Column<input id="nameColumn" type="text" placeholder="B" /></label>
+              <label>Name Start Row<input id="nameStart" type="number" placeholder="5" /></label>
+              <label>Name End Row<input id="nameEnd" type="number" placeholder="50" /></label>
+            </div>
+            <button id="createGroup">Create Group</button>
+            <p id="groupStatus" class="status"></p>
+          </section>
+
+          <section class="card">
+            <h2>Create Question</h2>
+            <div class="grid">
+              <label>Platform<select id="questionPlatform"><option value="leetcode">LeetCode</option><option value="codeforces">Codeforces</option><option value="hackerrank">HackerRank</option><option value="atcoder">AtCoder</option><option value="geeksforgeeks">GeeksforGeeks</option></select></label>
+              <label>Question Key<input id="questionKey" type="text" placeholder="two-sum" /></label>
+              <label>Title<input id="questionTitle" type="text" placeholder="Two Sum" /></label>
+              <label>URL<input id="questionUrl" type="text" placeholder="https://..." /></label>
+            </div>
+            <button id="createQuestion">Create Question</button>
+            <p id="questionStatus" class="status"></p>
+          </section>
+
+          <section class="card">
+            <h2>Create Mapping</h2>
+            <div class="grid">
+              <label>Group<select id="mappingGroupName"></select></label>
+              <label>Question<select id="mappingQuestionKey"></select></label>
+              <label>Trial Column<input id="mappingTrial" type="text" placeholder="C" /></label>
+              <label>Time Column<input id="mappingTime" type="text" placeholder="D" /></label>
+            </div>
+            <button id="createMapping">Create Mapping</button>
+            <p id="mappingStatus" class="status"></p>
+          </section>
+
+          <section class="card">
+            <h2>Delete Mapping</h2>
+            <div class="grid">
+              <label>Mapping<select id="deleteMappingId"></select></label>
+            </div>
+            <button id="deleteMapping">Delete Mapping</button>
+            <p id="deleteMappingStatus" class="status"></p>
+          </section>
+        </div>
+
+        <div class="column">
+          <section class="card">
+            <h2>Groups</h2>
+            <div class="grid">
+              <button id="loadGroups">Reload Groups</button>
+            </div>
+            <div class="table" id="groupsTable"></div>
+          </section>
+
+          <section class="card">
+            <h2>Questions</h2>
+            <div class="grid">
+              <button id="loadQuestions">Reload Questions</button>
+            </div>
+            <div class="table" id="questionsTable"></div>
+          </section>
+
+          <section class="card">
+            <h2>Mappings</h2>
+            <div class="grid">
+              <button id="loadMappings">Reload Mappings</button>
+            </div>
+            <div class="table" id="mappingsTable"></div>
+          </section>
+>>>>>>> 8c60849 (feat: implement master sheet synchronization functionality with new endpoints and UI components)
         </div>
       </div>
 

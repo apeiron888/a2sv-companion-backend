@@ -71,12 +71,22 @@ export async function updateTrialAndTime(params: {
   trialCount: number;
   timeMinutes: number;
   commitUrl: string;
+<<<<<<< HEAD
   tabName?: string;
 }) {
   const { sheetId, row, trialColumn, timeColumn, trialCount, timeMinutes, commitUrl, tabName } = params;
   const sheets = getSheetsClient();
 
   const prefix = tabName ? `'${tabName}'!` : "";
+=======
+  tabName?: string | null;
+}) {
+  const { sheetId, row, trialColumn, timeColumn, trialCount, timeMinutes, commitUrl, tabName } =
+    params;
+  const sheets = getSheetsClient();
+
+  const prefix = tabName ? `${tabName}!` : "";
+>>>>>>> 8c60849 (feat: implement master sheet synchronization functionality with new endpoints and UI components)
   const trialRange = `${prefix}${trialColumn}${row}`;
   const timeRange = `${prefix}${timeColumn}${row}`;
   const trialFormula = `=HYPERLINK("${commitUrl}", "${trialCount}")`;
@@ -93,6 +103,7 @@ export async function updateTrialAndTime(params: {
   });
 }
 
+<<<<<<< HEAD
 /**
  * Read a range of cells from a sheet.
  */
@@ -109,12 +120,16 @@ export async function readRange(sheetId: string, range: string): Promise<string[
  * Get the numeric sheet ID (gid) for a tab by its name.
  */
 export async function getSheetGidByName(sheetId: string, tabName: string): Promise<number> {
+=======
+export async function getSpreadsheetTabs(sheetId: string) {
+>>>>>>> 8c60849 (feat: implement master sheet synchronization functionality with new endpoints and UI components)
   const sheets = getSheetsClient();
   const response = await sheets.spreadsheets.get({
     spreadsheetId: sheetId,
     fields: "sheets.properties"
   });
 
+<<<<<<< HEAD
   const sheet = response.data.sheets?.find(
     (s) => s.properties?.title === tabName
   );
@@ -459,4 +474,32 @@ export async function batchWriteWithFormatting(params: {
       requestBody: { requests }
     });
   }
+=======
+  return (response.data.sheets || []).map((sheet) => ({
+    title: sheet.properties?.title || "",
+    sheetId: sheet.properties?.sheetId ?? 0,
+    columnCount: sheet.properties?.gridProperties?.columnCount ?? 0
+  }));
+}
+
+export async function readHeaderGrid(params: {
+  sheetId: string;
+  tabName: string;
+  startColumn: string;
+  endColumn: string;
+}) {
+  const { sheetId, tabName, startColumn, endColumn } = params;
+  const sheets = getSheetsClient();
+  const range = `${tabName}!${startColumn}1:${endColumn}5`;
+  const response = await sheets.spreadsheets.get({
+    spreadsheetId: sheetId,
+    ranges: [range],
+    includeGridData: true,
+    fields:
+      "sheets.data.rowData.values(formattedValue,hyperlink,effectiveValue,userEnteredValue)"
+  });
+
+  const rowData = response.data.sheets?.[0]?.data?.[0]?.rowData || [];
+  return rowData;
+>>>>>>> 8c60849 (feat: implement master sheet synchronization functionality with new endpoints and UI components)
 }

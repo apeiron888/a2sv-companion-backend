@@ -2,10 +2,17 @@ import { Router } from "express";
 import { z } from "zod";
 import { requireAdmin } from "../middleware/admin.js";
 import { GroupSheetModel } from "../models/GroupSheet.js";
+import { PhaseModel } from "../models/Phase.js";
 import { QuestionModel } from "../models/Question.js";
 import { QuestionGroupMappingModel } from "../models/QuestionGroupMapping.js";
+<<<<<<< HEAD
 import { PhaseModel } from "../models/Phase.js";
 import { addQuestionToMasterSheet, getNextAvailableColumn } from "../services/masterSheetService.js";
+=======
+import { columnToNumber, numberToColumn } from "../services/columnUtils.js";
+import { checkGroupSheetTabs, detectMasterSheetChanges } from "../services/syncService.js";
+import { env } from "../config/env.js";
+>>>>>>> 8c60849 (feat: implement master sheet synchronization functionality with new endpoints and UI components)
 
 export const adminRouter = Router();
 
@@ -34,12 +41,17 @@ const groupSchema = z.object({
 // ─── Question Schemas ─────────────────────────────────────────────
 
 const questionSchema = z.object({
+<<<<<<< HEAD
   platform: z.enum(["leetcode", "codeforces", "hackerrank"]),
+=======
+  platform: z.enum(["leetcode", "codeforces", "hackerrank", "atcoder", "geeksforgeeks"]),
+>>>>>>> 8c60849 (feat: implement master sheet synchronization functionality with new endpoints and UI components)
   question_key: z.string().min(1),
   title: z.string().min(1),
   url: z.string().url()
 });
 
+<<<<<<< HEAD
 const addToSheetSchema = z.object({
   phase_id: z.string().min(1),
   platform: z.enum(["leetcode", "codeforces", "hackerrank"]),
@@ -52,6 +64,38 @@ const addToSheetSchema = z.object({
 
 // ─── Mapping Schemas ──────────────────────────────────────────────
 
+=======
+const syncApproveSchema = z.object({
+  master_sheet_id: z.string().min(5).optional(),
+  tabs: z
+    .array(
+      z.object({
+        tab_name: z.string().min(1),
+        name: z.string().min(1).optional(),
+        start_column: z.string().min(1).optional(),
+        order: z.number().int().optional(),
+        active: z.boolean().optional()
+      })
+    )
+    .optional(),
+  questions: z
+    .array(
+      z.object({
+        tab_name: z.string().min(1),
+        platform: z.enum(["leetcode", "codeforces", "hackerrank", "atcoder", "geeksforgeeks"]),
+        question_key: z.string().min(1),
+        title: z.string().min(1),
+        url: z.string().url(),
+        difficulty: z.enum(["Easy", "Medium", "Hard"]).optional(),
+        tags: z.array(z.string()).optional(),
+        master_column: z.string().min(1),
+        time_column: z.string().min(1)
+      })
+    )
+    .optional()
+});
+
+>>>>>>> 8c60849 (feat: implement master sheet synchronization functionality with new endpoints and UI components)
 const mappingSchema = z.object({
   question_id: z.string().min(1),
   group_id: z.string().min(1),
@@ -355,6 +399,159 @@ adminRouter.delete("/mappings/:id", requireAdmin, async (req, res, next) => {
   try {
     await QuestionGroupMappingModel.findByIdAndDelete(req.params.id);
     return res.json({ success: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+adminRouter.get("/sync", requireAdmin, async (req, res, next) => {
+  try {
+    const masterSheetId = req.query.master_sheet_id?.toString();
+    const result = await detectMasterSheetChanges({ masterSheetId });
+    return res.json(result);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+adminRouter.post("/sync/approve", requireAdmin, async (req, res, next) => {
+  try {
+    const payload = syncApproveSchema.parse(req.body);
+    const masterSheetId = payload.master_sheet_id || env.MASTER_SHEET_ID;
+    if (!masterSheetId) {
+      return res.status(400).json({ success: false, message: "MASTER_SHEET_ID is required" });
+    }
+
+    const createdPhases: string[] = [];
+    const createdQuestions: string[] = [];
+
+    if (payload.tabs?.length) {
+      for (const tab of payload.tabs) {
+        const existing = await PhaseModel.findOne({ masterSheetId, tabName: tab.tab_name });
+        if (existing) {
+          continue;
+        }
+        const phase = await PhaseModel.create({
+          name: tab.name || tab.tab_name,
+          tabName: tab.tab_name,
+          masterSheetId,
+          startColumn: tab.start_column || "E",
+          lastQuestionColumn: null,
+          order: tab.order ?? 0,
+          active: tab.active ?? true
+        });
+        createdPhases.push(phase.id);
+      }
+    }
+
+    const questions = payload.questions || [];
+    const tabNames = Array.from(new Set(questions.map((question) => question.tab_name)));
+    const phases = tabNames.length
+      ? await PhaseModel.find({ masterSheetId, tabName: { $in: tabNames } })
+      : [];
+
+    const phaseMap = new Map(phases.map((phase) => [phase.tabName, phase]));
+    const groups = await GroupSheetModel.find({ active: true });
+
+    const phaseColumnUpdates = new Map<string, number>();
+
+    for (const question of questions) {
+      let phase = phaseMap.get(question.tab_name);
+      if (!phase) {
+        phase = await PhaseModel.create({
+          name: question.tab_name,
+          tabName: question.tab_name,
+          masterSheetId,
+          startColumn: "E",
+          lastQuestionColumn: null,
+          order: 0,
+          active: true
+        });
+        phaseMap.set(phase.tabName, phase);
+        createdPhases.push(phase.id);
+      }
+
+      const existingQuestion = await QuestionModel.findOne({
+        platform: question.platform,
+        questionKey: question.question_key
+      });
+
+      if (existingQuestion) {
+        continue;
+      }
+
+      const created = await QuestionModel.create({
+        platform: question.platform,
+        questionKey: question.question_key,
+        title: question.title,
+        url: question.url,
+        difficulty: question.difficulty ?? null,
+        tags: question.tags ?? [],
+        phaseId: phase._id,
+        masterColumn: question.master_column,
+        timeColumn: question.time_column
+      });
+
+      createdQuestions.push(created.id);
+
+      if (groups.length) {
+        await QuestionGroupMappingModel.bulkWrite(
+          groups.map((group) => ({
+            updateOne: {
+              filter: { questionId: created._id, groupId: group._id },
+              update: {
+                $setOnInsert: {
+                  questionId: created._id,
+                  groupId: group._id,
+                  trialColumn: question.master_column,
+                  timeColumn: question.time_column
+                }
+              },
+              upsert: true
+            }
+          }))
+        );
+      }
+
+      const columnNumber = columnToNumber(question.master_column);
+      const currentMax = phaseColumnUpdates.get(phase.id) || 0;
+      if (columnNumber > currentMax) {
+        phaseColumnUpdates.set(phase.id, columnNumber);
+      }
+    }
+
+    if (phaseColumnUpdates.size) {
+      for (const [phaseId, columnNumber] of phaseColumnUpdates.entries()) {
+        const phase = await PhaseModel.findById(phaseId);
+        if (!phase) {
+          continue;
+        }
+        const existingNumber = phase.lastQuestionColumn
+          ? columnToNumber(phase.lastQuestionColumn)
+          : 0;
+        if (columnNumber > existingNumber) {
+          await PhaseModel.findByIdAndUpdate(phaseId, {
+            lastQuestionColumn: numberToColumn(columnNumber)
+          });
+        }
+      }
+    }
+
+    return res.json({
+      success: true,
+      created_phases: createdPhases.length,
+      created_questions: createdQuestions.length
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+adminRouter.get("/tabs/health", requireAdmin, async (req, res, next) => {
+  try {
+    const masterSheetId = req.query.master_sheet_id?.toString();
+    const result = await checkGroupSheetTabs({ masterSheetId });
+    return res.json(result);
   } catch (error) {
     return next(error);
   }

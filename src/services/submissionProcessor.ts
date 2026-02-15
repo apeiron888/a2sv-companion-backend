@@ -1,6 +1,7 @@
 import { SubmissionModel } from "../models/Submission.js";
 import { UserModel } from "../models/User.js";
 import { QuestionModel } from "../models/Question.js";
+import { PhaseModel } from "../models/Phase.js";
 import { GroupSheetModel } from "../models/GroupSheet.js";
 import { QuestionGroupMappingModel } from "../models/QuestionGroupMapping.js";
 import { upsertRepoFile } from "./github.js";
@@ -57,6 +58,8 @@ export async function processSubmission(submissionId: string) {
       throw new Error("Question not found");
     }
 
+    const phase = question.phaseId ? await PhaseModel.findById(question.phaseId) : null;
+
     const groupSheet = await GroupSheetModel.findOne({ groupName: user.groupName, active: true });
     if (!groupSheet) {
       throw new Error("Group sheet not configured");
@@ -92,7 +95,8 @@ export async function processSubmission(submissionId: string) {
       timeColumn: mapping.timeColumn,
       trialCount: submission.trialCount,
       timeMinutes: submission.timeMinutes,
-      commitUrl
+      commitUrl,
+      tabName: phase?.tabName || null
     });
 
     submission.githubCommitUrl = commitUrl;

@@ -17,6 +17,7 @@ export const env = {
   AUTH_SUCCESS_REDIRECT: process.env.AUTH_SUCCESS_REDIRECT || "",
   AUTH_ERROR_REDIRECT: process.env.AUTH_ERROR_REDIRECT || "",
   GOOGLE_SERVICE_ACCOUNT_KEY_BASE64: process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64 || "",
+  MASTER_SHEET_ID: process.env.MASTER_SHEET_ID || "",
   REDIS_URL: process.env.REDIS_URL || "",
   ADMIN_API_KEY: process.env.ADMIN_API_KEY || "",
   ENCRYPTION_KEY: process.env.ENCRYPTION_KEY || "",
