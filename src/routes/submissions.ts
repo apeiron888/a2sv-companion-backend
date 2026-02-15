@@ -21,15 +21,11 @@ const submissionSchema = z.object({
   time_minutes: z.coerce.number().int().min(0)
 });
 
-<<<<<<< HEAD
-async function handleSubmission(req: AuthRequest, res: Response, platform: "leetcode" | "codeforces" | "hackerrank") {
-=======
 async function handleSubmission(
   req: AuthRequest,
   res: Response,
   platform: "leetcode" | "codeforces" | "hackerrank" | "atcoder" | "geeksforgeeks"
 ) {
->>>>>>> 8c60849 (feat: implement master sheet synchronization functionality with new endpoints and UI components)
   const payload = submissionSchema.parse(req.body);
   const user = await UserModel.findById(req.userId);
 

@@ -12,7 +12,13 @@ const platformMap: Record<string, string> = {
   atcoder: "atcoder",
   geeksforgeeks: "geeksforgeeks",
   "leet code": "leetcode",
-  "hacker rank": "hackerrank"
+  "leet-code": "leetcode",
+  "code forces": "codeforces",
+  "hacker rank": "hackerrank",
+  "hacker-rank": "hackerrank",
+  "at coder": "atcoder",
+  "gfg": "geeksforgeeks",
+  "geeks for geeks": "geeksforgeeks"
 };
 
 function normalizePlatform(raw: string) {
@@ -32,6 +38,18 @@ function extractQuestionKeyFromUrl(url: string) {
   try {
     const parsed = new URL(url);
     const parts = parsed.pathname.split("/").filter(Boolean);
+    if (parsed.hostname.includes("atcoder.jp")) {
+      const taskIndex = parts.findIndex((part) => part === "tasks");
+      if (taskIndex >= 0 && parts[taskIndex + 1]) {
+        return parts[taskIndex + 1];
+      }
+    }
+    if (parsed.hostname.includes("geeksforgeeks.org")) {
+      const problemsIndex = parts.findIndex((part) => part === "problems");
+      if (problemsIndex >= 0 && parts[problemsIndex + 1]) {
+        return parts[problemsIndex + 1];
+      }
+    }
     const challengeIndex = parts.findIndex((part) => part === "challenges");
     if (challengeIndex >= 0 && parts[challengeIndex + 1]) {
       return parts[challengeIndex + 1];
@@ -163,6 +181,20 @@ export async function detectMasterSheetChanges(params?: { masterSheetId?: string
       if (!url) {
         warnings.push({ tabName: tab.title, column: numberToColumn(colNumber), issue: "Missing URL" });
       }
+      if (difficulty && !["Easy", "Medium", "Hard"].includes(difficulty)) {
+        warnings.push({
+          tabName: tab.title,
+          column: numberToColumn(colNumber),
+          issue: `Unknown difficulty: ${difficulty}`
+        });
+      }
+      if (!tags.length) {
+        warnings.push({
+          tabName: tab.title,
+          column: numberToColumn(colNumber),
+          issue: "Missing tags"
+        });
+      }
       if (!platform) {
         warnings.push({
           tabName: tab.title,
@@ -180,6 +212,14 @@ export async function detectMasterSheetChanges(params?: { masterSheetId?: string
 
       if (!questionKey || !platform) {
         continue;
+      }
+
+      if (!url && title) {
+        warnings.push({
+          tabName: tab.title,
+          column: numberToColumn(colNumber),
+          issue: "Key derived from title (no URL)"
+        });
       }
 
       if (phase && existingSet.has(`${platform}:${questionKey}`)) {

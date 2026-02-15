@@ -3,7 +3,6 @@
    ═══════════════════════════════════════════════════════════════════ */
 
 // ─── DOM References ───────────────────────────────────────────────
-
 const adminKeyInput = document.getElementById("adminKey");
 const settingsStatus = document.getElementById("settingsStatus");
 const settingsPanel = document.getElementById("settingsPanel");
@@ -123,10 +122,9 @@ function saveSettings() {
 }
 
 function getConfig() {
-  return {
-    apiBase: window.location.origin,
-    adminKey: adminKeyInput.value.trim()
-  };
+  const apiBase = window.location.origin;
+  const adminKey = adminKeyInput.value.trim();
+  return { apiBase, adminKey };
 }
 
 // ─── API Call Helper ──────────────────────────────────────────────
@@ -283,7 +281,7 @@ async function createPhase() {
     name: phaseFields.name.value.trim(),
     tab_name: phaseFields.tabName.value.trim(),
     master_sheet_id: phaseFields.masterSheetId.value.trim(),
-    start_column: phaseFields.startColumn.value.trim() || "H",
+    start_column: phaseFields.startColumn.value.trim() || "E",
     order: Number(phaseFields.order.value) || 0
   };
 
@@ -981,36 +979,6 @@ function renderTabHealth(expectedTabs) {
       </thead>
       <tbody>${rows}</tbody>
     </table>`;
-}
-
-function populateGroupOptions() {
-  fields.mappingGroupName.innerHTML = "";
-  const placeholder = document.createElement("option");
-  placeholder.value = "";
-  placeholder.textContent = "Select a group";
-  fields.mappingGroupName.appendChild(placeholder);
-
-  cachedGroups.forEach((item) => {
-    const option = document.createElement("option");
-    option.value = item.groupName;
-    option.textContent = item.groupName;
-    fields.mappingGroupName.appendChild(option);
-  });
-}
-
-function populateQuestionOptions() {
-  fields.mappingQuestionKey.innerHTML = "";
-  const placeholder = document.createElement("option");
-  placeholder.value = "";
-  placeholder.textContent = "Select a question";
-  fields.mappingQuestionKey.appendChild(placeholder);
-
-  cachedQuestions.forEach((item) => {
-    const option = document.createElement("option");
-    option.value = item.questionKey;
-    option.textContent = `${item.platform} • ${item.questionKey}`;
-    fields.mappingQuestionKey.appendChild(option);
-  });
 }
 
 function populateMappingDeleteOptions() {

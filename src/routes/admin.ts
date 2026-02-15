@@ -5,14 +5,10 @@ import { GroupSheetModel } from "../models/GroupSheet.js";
 import { PhaseModel } from "../models/Phase.js";
 import { QuestionModel } from "../models/Question.js";
 import { QuestionGroupMappingModel } from "../models/QuestionGroupMapping.js";
-<<<<<<< HEAD
-import { PhaseModel } from "../models/Phase.js";
 import { addQuestionToMasterSheet, getNextAvailableColumn } from "../services/masterSheetService.js";
-=======
 import { columnToNumber, numberToColumn } from "../services/columnUtils.js";
 import { checkGroupSheetTabs, detectMasterSheetChanges } from "../services/syncService.js";
 import { env } from "../config/env.js";
->>>>>>> 8c60849 (feat: implement master sheet synchronization functionality with new endpoints and UI components)
 
 export const adminRouter = Router();
 
@@ -22,7 +18,7 @@ const phaseSchema = z.object({
   name: z.string().min(2),
   tab_name: z.string().min(1),
   master_sheet_id: z.string().min(5),
-  start_column: z.string().min(1).default("H"),
+  start_column: z.string().min(1).default("E"),
   order: z.coerce.number().int().min(0).default(0),
   active: z.boolean().optional()
 });
@@ -41,20 +37,15 @@ const groupSchema = z.object({
 // ─── Question Schemas ─────────────────────────────────────────────
 
 const questionSchema = z.object({
-<<<<<<< HEAD
-  platform: z.enum(["leetcode", "codeforces", "hackerrank"]),
-=======
   platform: z.enum(["leetcode", "codeforces", "hackerrank", "atcoder", "geeksforgeeks"]),
->>>>>>> 8c60849 (feat: implement master sheet synchronization functionality with new endpoints and UI components)
   question_key: z.string().min(1),
   title: z.string().min(1),
   url: z.string().url()
 });
 
-<<<<<<< HEAD
 const addToSheetSchema = z.object({
   phase_id: z.string().min(1),
-  platform: z.enum(["leetcode", "codeforces", "hackerrank"]),
+  platform: z.enum(["leetcode", "codeforces", "hackerrank", "atcoder", "geeksforgeeks"]),
   question_key: z.string().min(1),
   title: z.string().min(1),
   url: z.string().url(),
@@ -62,9 +53,8 @@ const addToSheetSchema = z.object({
   tags: z.array(z.string()).default([])
 });
 
-// ─── Mapping Schemas ──────────────────────────────────────────────
+// ─── Sync Schemas ────────────────────────────────────────────────
 
-=======
 const syncApproveSchema = z.object({
   master_sheet_id: z.string().min(5).optional(),
   tabs: z
@@ -95,7 +85,8 @@ const syncApproveSchema = z.object({
     .optional()
 });
 
->>>>>>> 8c60849 (feat: implement master sheet synchronization functionality with new endpoints and UI components)
+// ─── Mapping Schemas ──────────────────────────────────────────────
+
 const mappingSchema = z.object({
   question_id: z.string().min(1),
   group_id: z.string().min(1),
